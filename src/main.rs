@@ -68,13 +68,18 @@ fn tokenize(line: &str) -> Vec<&str> {
     return tokens;
 }
 
-fn init(_state: &State) {}
+fn init(state: &mut State) {
+    extern crate libc;
+    state.fd_terminal = libc::STDIN_FILENO;
+    state.interactive = unsafe { libc::isatty(state.fd_terminal) > 0 };
+    println!("{:?}", unsafe { libc::isatty(state.fd_terminal) });
+}
 
 fn done() {}
 
 fn main() {
     let mut state = State::new("frish");
-    init(&state);
+    init(&mut state);
     // run
     while state.running {
         print_prompt(&state);
@@ -86,7 +91,7 @@ fn main() {
                     continue;
                 }
                 println!("{:?}", tokens);
-                match state.find(tokens[0]) {
+                match state.find_builtin(tokens[0]) {
                     Some(builtin) => (builtin.fun)(&mut state, tokens),
                     None => continue,
                 }

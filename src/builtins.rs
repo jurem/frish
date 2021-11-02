@@ -4,6 +4,7 @@ use nix::unistd;
 use std::env;
 use std::fmt;
 use std::fs; // portable FS functions
+use std::io;
 
 use crate::common::State;
 
@@ -32,6 +33,13 @@ impl fmt::Debug for Builtin {
             .field("help", &self.help)
             .finish()
     }
+}
+
+// ********** helper functions **********
+
+fn handle_error(state: &mut State, err: &io::Error) {
+    state.status = errno::errno();
+    eprintln!("{}", err);
 }
 
 // ********** builtin commands **********
@@ -103,9 +111,9 @@ pub fn do_exit(state: &mut State, tokens: Vec<&str>) {
 pub fn do_dir_change(state: &mut State, tokens: Vec<&str>) {
     state.status = 0;
     let path = if tokens.len() == 1 { "/" } else { tokens[1] };
-    if env::set_current_dir(&path).is_err() {
+    if let Err(err) = env::set_current_dir(&path) {
         // if let Err(_) = unistd::chdir(path) {
-        state.status = errno::errno();
+        handle_error(state, &err);
     }
 }
 
@@ -113,7 +121,7 @@ pub fn do_dir_where(state: &mut State, _tokens: Vec<&str>) {
     state.status = 0;
     match env::current_dir() {
         Ok(path) => println!("{}", path.display()),
-        Err(_) => state.status = 1,
+        Err(err) => handle_error(state, &err),
     };
 }
 
@@ -122,9 +130,8 @@ pub fn do_dir_make(state: &mut State, tokens: Vec<&str>) {
     for t in &tokens[1..] {
         // let path = std::path::PathBuf::from(t);
         // if let Err(e) = nix::unistd::mkdir(&path, nix::sys::stat::Mode::S_IRWXU) {
-        if fs::create_dir(t).is_err() {
-            state.status = errno::errno();
-            break;
+        if let Err(err) = fs::create_dir(t) {
+            handle_error(state, &err);
         }
     }
 }
@@ -132,8 +139,8 @@ pub fn do_dir_make(state: &mut State, tokens: Vec<&str>) {
 pub fn do_dir_remove(state: &mut State, tokens: Vec<&str>) {
     state.status = 0;
     for t in &tokens[1..] {
-        if fs::remove_dir(t).is_err() {
-            state.status = errno::errno();
+        if let Err(err) = fs::remove_dir(t) {
+            handle_error(state, &err)
         }
     }
 }
@@ -149,58 +156,117 @@ fn get_dir_entries(tokens: Vec<&str>) -> std::io::Result<fs::ReadDir> {
 
 pub fn do_dir_list(state: &mut State, tokens: Vec<&str>) {
     state.status = 0;
-    if let Ok(entries) = get_dir_entries(tokens) {
-        for entry in entries {
-            if let Ok(entry) = entry {
-                print!("{}  ", entry.file_name().to_str().unwrap())
+    match get_dir_entries(tokens) {
+        Ok(entries) => {
+            for entry in entries {
+                if let Ok(entry) = entry {
+                    print!("{}  ", entry.file_name().to_str().unwrap())
+                }
             }
+            println!();
         }
-        println!();
+        Err(err) => handle_error(state, &err),
     }
-    state.status = errno::errno();
 }
 
 pub fn do_dir_inspect(state: &mut State, tokens: Vec<&str>) {
     state.status = 0;
-    if let Ok(entries) = get_dir_entries(tokens) {
-        for entry in entries {
-            if let Ok(entry) = entry {
-                if let Ok(metadata) = entry.metadata() {
-                    println!(
-                        "{:?} {}  ",
-                        metadata.len(),
-                        entry.file_name().to_str().unwrap()
-                    )
+    match get_dir_entries(tokens) {
+        Ok(entries) => {
+            for entry in entries {
+                if let Ok(entry) = entry {
+                    if let Ok(metadata) = entry.metadata() {
+                        println!(
+                            "{:?} {}  ",
+                            metadata.len(),
+                            entry.file_name().to_str().unwrap()
+                        )
+                    }
                 }
             }
         }
+        Err(err) => handle_error(state, &err),
     }
-    state.status = errno::errno();
 }
 
 pub fn do_link_hard(state: &mut State, tokens: Vec<&str>) {
     state.status = 0;
-    if fs::hard_link(tokens[1], tokens[2]).is_err() {
-        state.status = errno::errno();
+    if let Err(err) = fs::hard_link(tokens[1], tokens[2]) {
+        handle_error(state, &err);
     }
 }
 
 pub fn do_link_soft(state: &mut State, tokens: Vec<&str>) {
     state.status = 0;
     //    fs:: soft_link(tokens[1], tokens[2])
-    if std::os::unix::fs::symlink(tokens[1], tokens[2]).is_err() {
-        state.status = errno::errno();
+    if let Err(err) = std::os::unix::fs::symlink(tokens[1], tokens[2]) {
+        handle_error(state, &err);
     }
 }
 
 pub fn do_link_read(state: &mut State, tokens: Vec<&str>) {
     state.status = 0;
     for t in &tokens[1..] {
-        if let Ok(path) = fs::read_link(&t) {
-            println!("{}", path.display());
+        match fs::read_link(&t) {
+            Ok(path) => println!("{}", path.display()),
+            Err(err) => handle_error(state, &err),
         }
     }
-    state.status = errno::errno();
+}
+
+pub fn do_unlink(state: &mut State, tokens: Vec<&str>) {
+    state.status = 0;
+    for t in &tokens[1..] {
+        if let Err(err) = fs::remove_file(t) {
+            handle_error(state, &err)
+        }
+    }
+}
+
+pub fn do_rename(state: &mut State, tokens: Vec<&str>) {
+    state.status = 0;
+    if let Err(err) = fs::rename(tokens[1], tokens[2]) {
+        handle_error(state, &err)
+    }
+}
+
+pub fn do_cpcat(state: &mut State, tokens: Vec<&str>) {
+    state.status = 0;
+
+    let mut fin: Box<dyn io::Read + 'static> = if tokens[1] == "-" {
+        Box::new(io::stdin())
+    } else {
+        match fs::OpenOptions::new().read(true).open(tokens[1]) {
+            Ok(file) => Box::new(file),
+            Err(err) => {
+                handle_error(state, &err);
+                return;
+            }
+        }
+    };
+
+    let mut fout: Box<dyn io::Write + 'static> = if tokens[2] == "-" {
+        Box::new(io::stdout())
+    } else {
+        match fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open(tokens[2])
+        {
+            Ok(file) => Box::new(file),
+            Err(err) => {
+                handle_error(state, &err);
+                return;
+            }
+        }
+    };
+    let mut buf = [0; 4096];
+    while let Ok(count) = fin.read(&mut buf) {
+        if count == 0 {
+            break;
+        }
+        fout.write(&buf[0..count]);
+    }
 }
 
 // ********** default builtins **********
@@ -225,5 +291,8 @@ pub fn default_builtins() -> Vec<Builtin> {
         Builtin::new(do_link_hard, "link.hard", "Create hard link"),
         Builtin::new(do_link_soft, "link.soft", "Create symbolic/soft link"),
         Builtin::new(do_link_read, "link.read", "Print symbolic link target"),
+        Builtin::new(do_unlink, "unlink", "Unlink files"),
+        Builtin::new(do_rename, "rename", "Rename file"),
+        Builtin::new(do_cpcat, "cpcat", "Copy file"),
     ]
 }
