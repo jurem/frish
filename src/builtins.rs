@@ -1,4 +1,3 @@
-use nix::errno;
 use nix::unistd;
 
 use std::env;
@@ -6,7 +5,7 @@ use std::fmt;
 use std::fs; // portable FS functions
 use std::io;
 
-use crate::common::State;
+use crate::common::{handle_ioerror, State};
 
 type BuiltinFun = fn(&mut State, Vec<&str>);
 
@@ -35,19 +34,12 @@ impl fmt::Debug for Builtin {
     }
 }
 
-// ********** helper functions **********
-
-fn handle_error(state: &mut State, err: &io::Error) {
-    state.status = errno::errno();
-    eprintln!("{}", err);
-}
-
 // ********** builtin commands **********
 
 pub fn do_help(state: &mut State, _tokens: Vec<&str>) {
     state.status = 0;
     for b in &state.builtins {
-        println!("{}\t\t{}", b.cmd, b.help);
+        println!("{:16}{}", b.cmd, b.help);
     }
 }
 
@@ -113,7 +105,7 @@ pub fn do_dir_change(state: &mut State, tokens: Vec<&str>) {
     let path = if tokens.len() == 1 { "/" } else { tokens[1] };
     if let Err(err) = env::set_current_dir(&path) {
         // if let Err(_) = unistd::chdir(path) {
-        handle_error(state, &err);
+        handle_ioerror(state, &err);
     }
 }
 
@@ -121,7 +113,7 @@ pub fn do_dir_where(state: &mut State, _tokens: Vec<&str>) {
     state.status = 0;
     match env::current_dir() {
         Ok(path) => println!("{}", path.display()),
-        Err(err) => handle_error(state, &err),
+        Err(err) => handle_ioerror(state, &err),
     };
 }
 
@@ -131,7 +123,7 @@ pub fn do_dir_make(state: &mut State, tokens: Vec<&str>) {
         // let path = std::path::PathBuf::from(t);
         // if let Err(e) = nix::unistd::mkdir(&path, nix::sys::stat::Mode::S_IRWXU) {
         if let Err(err) = fs::create_dir(t) {
-            handle_error(state, &err);
+            handle_ioerror(state, &err);
         }
     }
 }
@@ -140,7 +132,7 @@ pub fn do_dir_remove(state: &mut State, tokens: Vec<&str>) {
     state.status = 0;
     for t in &tokens[1..] {
         if let Err(err) = fs::remove_dir(t) {
-            handle_error(state, &err)
+            handle_ioerror(state, &err)
         }
     }
 }
@@ -165,7 +157,7 @@ pub fn do_dir_list(state: &mut State, tokens: Vec<&str>) {
             }
             println!();
         }
-        Err(err) => handle_error(state, &err),
+        Err(err) => handle_ioerror(state, &err),
     }
 }
 
@@ -185,14 +177,14 @@ pub fn do_dir_inspect(state: &mut State, tokens: Vec<&str>) {
                 }
             }
         }
-        Err(err) => handle_error(state, &err),
+        Err(err) => handle_ioerror(state, &err),
     }
 }
 
 pub fn do_link_hard(state: &mut State, tokens: Vec<&str>) {
     state.status = 0;
     if let Err(err) = fs::hard_link(tokens[1], tokens[2]) {
-        handle_error(state, &err);
+        handle_ioerror(state, &err);
     }
 }
 
@@ -200,7 +192,7 @@ pub fn do_link_soft(state: &mut State, tokens: Vec<&str>) {
     state.status = 0;
     //    fs:: soft_link(tokens[1], tokens[2])
     if let Err(err) = std::os::unix::fs::symlink(tokens[1], tokens[2]) {
-        handle_error(state, &err);
+        handle_ioerror(state, &err);
     }
 }
 
@@ -209,7 +201,7 @@ pub fn do_link_read(state: &mut State, tokens: Vec<&str>) {
     for t in &tokens[1..] {
         match fs::read_link(&t) {
             Ok(path) => println!("{}", path.display()),
-            Err(err) => handle_error(state, &err),
+            Err(err) => handle_ioerror(state, &err),
         }
     }
 }
@@ -218,7 +210,7 @@ pub fn do_unlink(state: &mut State, tokens: Vec<&str>) {
     state.status = 0;
     for t in &tokens[1..] {
         if let Err(err) = fs::remove_file(t) {
-            handle_error(state, &err)
+            handle_ioerror(state, &err)
         }
     }
 }
@@ -226,7 +218,7 @@ pub fn do_unlink(state: &mut State, tokens: Vec<&str>) {
 pub fn do_rename(state: &mut State, tokens: Vec<&str>) {
     state.status = 0;
     if let Err(err) = fs::rename(tokens[1], tokens[2]) {
-        handle_error(state, &err)
+        handle_ioerror(state, &err)
     }
 }
 
@@ -239,7 +231,7 @@ pub fn do_cpcat(state: &mut State, tokens: Vec<&str>) {
         match fs::OpenOptions::new().read(true).open(tokens[1]) {
             Ok(file) => Box::new(file),
             Err(err) => {
-                handle_error(state, &err);
+                handle_ioerror(state, &err);
                 return;
             }
         }
@@ -255,7 +247,7 @@ pub fn do_cpcat(state: &mut State, tokens: Vec<&str>) {
         {
             Ok(file) => Box::new(file),
             Err(err) => {
-                handle_error(state, &err);
+                handle_ioerror(state, &err);
                 return;
             }
         }

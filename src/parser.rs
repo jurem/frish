@@ -1,3 +1,5 @@
+use crate::common::State;
+
 pub fn tokenize(line: &str) -> Vec<&str> {
     let mut tokens = vec![];
     let mut pos = 0;
@@ -50,4 +52,25 @@ pub fn tokenize(line: &str) -> Vec<&str> {
         ch = iter.next();
     }
     return tokens;
+}
+
+pub fn parse(tokens: &mut Vec<&str>, state: &mut State) {
+    // check for background
+    let last = tokens.len() - 1;
+    state.background = tokens[last] == "&";
+    if state.background {
+        tokens.remove(last);
+    }
+    // check for output redirection
+    let last = tokens.len() - 1;
+    if tokens[last].starts_with(">") {
+        state.outredirect = String::from(&tokens[last][1..]);
+        tokens.remove(last);
+    }
+    // check for input redirection
+    let last = tokens.len() - 1;
+    if tokens[last].starts_with("<") {
+        state.inredirect = String::from(&tokens[last][1..]);
+        tokens.remove(last);
+    }
 }
