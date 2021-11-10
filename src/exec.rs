@@ -1,6 +1,10 @@
+use nix::fcntl::{open, OFlag};
+use nix::sys::stat::Mode;
 use nix::sys::wait::waitpid;
-use nix::unistd::{execvp, fork, ForkResult, Pid};
+use nix::unistd::{close, dup, dup2, execvp, fork, ForkResult, Pid};
+use std::os::unix::io::RawFd;
 
+use crate::builtins::{find_builtin, Builtin};
 use crate::common::State;
 use crate::common::{debug, handle_ioerror};
 use crate::parser;
@@ -22,11 +26,30 @@ fn wait_process(state: &mut State, pid: Pid) -> i32 {
     }
 }
 
-fn exec_external(prog: &str, args: Vec<&str>) {
+fn redirect_in(infile: &str) -> Option<RawFd> {
+    if infile.is_empty() {
+        None
+    } else {
+        let fdin = open(infile, OFlag::O_RDONLY, Mode::S_IRWXU).unwrap();
+        let fdinold = dup(0).unwrap();
+        dup2(fdin, 0).unwrap();
+        close(fdin).unwrap();
+        Some(fdinold)
+    }
+}
+
+fn restore_in(fdinold: Option<RawFd>) {
+    if let Some(fdinold) = fdinold {
+        dup2(fdinold, 0).unwrap();
+        close(fdinold).unwrap();
+    }
+}
+
+fn exec_external(prog: &str, args: &[&str]) {
     let prog = std::ffi::CString::new(prog).unwrap();
     let args = args
         .into_iter()
-        .map(|arg| std::ffi::CString::new(arg))
+        .map(|&arg| std::ffi::CString::new(arg))
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
     // let args = args. into_iter().map(|arg| arg.as_ptr()).collect();
@@ -35,8 +58,11 @@ fn exec_external(prog: &str, args: Vec<&str>) {
         Ok(_) => {}
     }
 }
+// let res = path.with_nix_path(|cstr| {
+//     unsafe { libc::chdir(cstr.as_ptr()) }
+// })?;
 
-pub fn run_external(state: &mut State, tokens: Vec<&str>) {
+pub fn run_external(state: &mut State, args: &[&str]) {
     debug(state, "Executing external command");
     match unsafe { fork() } {
         Ok(ForkResult::Parent { child }) => {
@@ -45,7 +71,8 @@ pub fn run_external(state: &mut State, tokens: Vec<&str>) {
             }
         }
         Ok(ForkResult::Child) => {
-            exec_external(tokens[0], tokens);
+            exec_external(args[0], args);
+            std::process::exit(127);
         }
         Err(err) => {
             let err = std::io::Error::from(err);
@@ -54,24 +81,8 @@ pub fn run_external(state: &mut State, tokens: Vec<&str>) {
     }
 }
 
-pub fn run_command(state: &mut State, command: &str) {
-    let mut tokens = parser::tokenize(&command);
-    if tokens.len() == 0 {
-        debug(&state, "No command given.");
-    } else {
-        parser::parse(&mut tokens, state);
-        if state.debug {
-            eprintln!("Tokens: {:?}", tokens);
-            eprintln!(
-                "Modifiers: {} {} {}",
-                state.inredirect, state.outredirect, state.background
-            );
-        }
-        match state.find_builtin(tokens[0]) {
-            Some(builtin) => (builtin.fun)(state, tokens),
-            None => run_external(state, tokens),
-        }
-    }
+pub fn run_builtin(builtin: &Builtin, state: &mut State, args: &[&str]) {
+    (builtin.fun)(state, args);
 }
 
 pub fn forkit(_: &mut State) -> Pid {

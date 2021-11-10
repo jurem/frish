@@ -1,13 +1,14 @@
+use nix::fcntl;
+use nix::sys::stat;
 use nix::unistd;
 
-use std::env;
 use std::fmt;
 use std::fs; // portable FS functions
 use std::io;
 
-use crate::common::{handle_ioerror, State};
+use crate::common::{handle_ioerror, handle_nixerror, State};
 
-type BuiltinFun = fn(&mut State, Vec<&str>);
+type BuiltinFun = fn(&mut State, &[&str]);
 
 pub struct Builtin {
     pub fun: BuiltinFun,
@@ -36,119 +37,123 @@ impl fmt::Debug for Builtin {
 
 // ********** builtin commands **********
 
-pub fn do_help(state: &mut State, _tokens: Vec<&str>) {
+pub fn do_help(state: &mut State, _args: &[&str]) {
     state.status = 0;
-    for b in &state.builtins {
-        println!("{:16}{}", b.cmd, b.help);
-    }
+    // for b in &state.builtins {
+    //     println!("{:16}{}", b.cmd, b.help);
+    // }
 }
 
-pub fn do_name(state: &mut State, tokens: Vec<&str>) {
+pub fn do_name(state: &mut State, args: &[&str]) {
     state.status = 0;
-    if tokens.len() > 1 {
-        state.name = String::from(tokens[1]);
+    if args.len() > 1 {
+        state.name = String::from(args[1]);
     } else {
         println!("{}", state.name);
     }
 }
 
-pub fn do_debug(state: &mut State, tokens: Vec<&str>) {
+pub fn do_debug(state: &mut State, args: &[&str]) {
     state.status = 0;
-    if tokens.len() > 1 {
-        state.debug = tokens[1] == "on";
+    if args.len() > 1 {
+        state.debug = args[1] == "on";
     }
     println!("Debug is {}", if state.debug { "on" } else { "off" });
 }
 
-pub fn do_status(state: &mut State, _tokens: Vec<&str>) {
+pub fn do_status(state: &mut State, _args: &[&str]) {
     println!("{}", state.status);
     state.status = 0;
 }
 
-pub fn do_print(state: &mut State, tokens: Vec<&str>) {
+pub fn do_print(state: &mut State, args: &[&str]) {
     state.status = 0;
-    for (i, t) in tokens.iter().enumerate() {
-        if i == 0 {
-            continue;
-        };
-        print!("{}", t);
-        if i < tokens.len() {
+    let last = args.last().unwrap();
+    for arg in args.iter().skip(1) {
+        print!("{}", arg);
+        if arg != last {
             print!(" ");
-        }
+        };
     }
 }
 
-pub fn do_echo(state: &mut State, tokens: Vec<&str>) {
-    do_print(state, tokens);
+pub fn do_echo(state: &mut State, args: &[&str]) {
+    do_print(state, args);
     println!("");
 }
 
-pub fn do_pid(state: &mut State, _tokens: Vec<&str>) {
+pub fn do_pid(state: &mut State, _args: &[&str]) {
     state.status = 0;
     println!("{}", unistd::getpid());
 }
 
-pub fn do_ppid(state: &mut State, _tokens: Vec<&str>) {
+pub fn do_ppid(state: &mut State, _args: &[&str]) {
     state.status = 0;
     println!("{}", unistd::getppid());
 }
 
-pub fn do_exit(state: &mut State, tokens: Vec<&str>) {
-    if tokens.len() > 1 {
-        state.status = tokens[1].parse::<i32>().unwrap();
+pub fn do_exit(state: &mut State, args: &[&str]) {
+    if args.len() > 1 {
+        state.status = args[1].parse::<i32>().unwrap_or(0);
     }
     state.running = false;
 }
 
-pub fn do_dir_change(state: &mut State, tokens: Vec<&str>) {
+pub fn do_dir_change(state: &mut State, args: &[&str]) {
     state.status = 0;
-    let path = if tokens.len() == 1 { "/" } else { tokens[1] };
-    if let Err(err) = env::set_current_dir(&path) {
-        // if let Err(_) = unistd::chdir(path) {
-        handle_ioerror(state, &err);
+    let path = if args.len() == 1 { "/" } else { args[1] };
+    if let Err(err) = unistd::chdir(path) {
+        handle_nixerror(state, &err);
     }
 }
 
-pub fn do_dir_where(state: &mut State, _tokens: Vec<&str>) {
+pub fn do_dir_where(state: &mut State, _args: &[&str]) {
     state.status = 0;
-    match env::current_dir() {
+    match unistd::getcwd() {
         Ok(path) => println!("{}", path.display()),
-        Err(err) => handle_ioerror(state, &err),
+        Err(err) => handle_nixerror(state, &err),
     };
 }
 
-pub fn do_dir_make(state: &mut State, tokens: Vec<&str>) {
+pub fn do_dir_make(state: &mut State, args: &[&str]) {
     state.status = 0;
-    for t in &tokens[1..] {
-        // let path = std::path::PathBuf::from(t);
-        // if let Err(e) = nix::unistd::mkdir(&path, nix::sys::stat::Mode::S_IRWXU) {
-        if let Err(err) = fs::create_dir(t) {
-            handle_ioerror(state, &err);
+    for arg in &args[1..] {
+        let path = std::path::PathBuf::from(arg);
+        if let Err(err) = unistd::mkdir(&path, stat::Mode::S_IRWXU) {
+            handle_nixerror(state, &err);
         }
     }
 }
 
-pub fn do_dir_remove(state: &mut State, tokens: Vec<&str>) {
+use nix::NixPath;
+
+fn rmdir<P: ?Sized + NixPath>(path: &P) -> nix::Result<()> {
+    let res = path.with_nix_path(|cstr| unsafe { libc::rmdir(cstr.as_ptr()) })?;
+    nix::errno::Errno::result(res).map(drop)
+}
+
+pub fn do_dir_remove(state: &mut State, args: &[&str]) {
     state.status = 0;
-    for t in &tokens[1..] {
-        if let Err(err) = fs::remove_dir(t) {
-            handle_ioerror(state, &err)
+    for arg in &args[1..] {
+        let path = std::path::PathBuf::from(arg);
+        if let Err(err) = rmdir(&path) {
+            handle_nixerror(state, &err)
         }
     }
 }
 
-fn get_dir_entries(tokens: Vec<&str>) -> std::io::Result<fs::ReadDir> {
-    let path = if tokens.len() > 1 {
-        std::path::PathBuf::from(tokens[1])
+fn get_dir_entries(args: &[&str]) -> std::io::Result<fs::ReadDir> {
+    let path = if args.len() > 1 {
+        std::path::PathBuf::from(args[1])
     } else {
-        env::current_dir()?
+        unistd::getcwd()?
     };
     fs::read_dir(path)
 }
 
-pub fn do_dir_list(state: &mut State, tokens: Vec<&str>) {
+pub fn do_dir_list(state: &mut State, args: &[&str]) {
     state.status = 0;
-    match get_dir_entries(tokens) {
+    match get_dir_entries(args) {
         Ok(entries) => {
             for entry in entries {
                 if let Ok(entry) = entry {
@@ -161,9 +166,9 @@ pub fn do_dir_list(state: &mut State, tokens: Vec<&str>) {
     }
 }
 
-pub fn do_dir_inspect(state: &mut State, tokens: Vec<&str>) {
+pub fn do_dir_inspect(state: &mut State, args: &[&str]) {
     state.status = 0;
-    match get_dir_entries(tokens) {
+    match get_dir_entries(args) {
         Ok(entries) => {
             for entry in entries {
                 if let Ok(entry) = entry {
@@ -181,54 +186,76 @@ pub fn do_dir_inspect(state: &mut State, tokens: Vec<&str>) {
     }
 }
 
-pub fn do_link_hard(state: &mut State, tokens: Vec<&str>) {
+pub fn do_link_hard(state: &mut State, args: &[&str]) {
     state.status = 0;
-    if let Err(err) = fs::hard_link(tokens[1], tokens[2]) {
-        handle_ioerror(state, &err);
+    if let Err(err) = unistd::linkat(
+        None,
+        args[1],
+        None,
+        args[2],
+        unistd::LinkatFlags::NoSymlinkFollow,
+    ) {
+        handle_nixerror(state, &err);
     }
 }
 
-pub fn do_link_soft(state: &mut State, tokens: Vec<&str>) {
+pub fn do_link_soft(state: &mut State, args: &[&str]) {
     state.status = 0;
-    //    fs:: soft_link(tokens[1], tokens[2])
-    if let Err(err) = std::os::unix::fs::symlink(tokens[1], tokens[2]) {
-        handle_ioerror(state, &err);
+    if let Err(err) = unistd::symlinkat(args[1], None, args[2]) {
+        handle_nixerror(state, &err);
     }
 }
 
-pub fn do_link_read(state: &mut State, tokens: Vec<&str>) {
+pub fn do_link_read(state: &mut State, args: &[&str]) {
     state.status = 0;
-    for t in &tokens[1..] {
-        match fs::read_link(&t) {
-            Ok(path) => println!("{}", path.display()),
-            Err(err) => handle_ioerror(state, &err),
+    for arg in &args[1..] {
+        let arg = std::path::PathBuf::from(arg);
+        match fcntl::readlink(&arg) {
+            Ok(path) => println!("{}", path.to_str().unwrap()),
+            Err(err) => handle_nixerror(state, &err),
         }
     }
 }
 
-pub fn do_unlink(state: &mut State, tokens: Vec<&str>) {
+pub fn do_unlink(state: &mut State, args: &[&str]) {
     state.status = 0;
-    for t in &tokens[1..] {
-        if let Err(err) = fs::remove_file(t) {
-            handle_ioerror(state, &err)
+    for arg in &args[1..] {
+        let path = std::path::PathBuf::from(arg);
+        if let Err(err) = unistd::unlink(&path) {
+            handle_nixerror(state, &err)
         }
     }
 }
 
-pub fn do_rename(state: &mut State, tokens: Vec<&str>) {
+pub fn do_rename(state: &mut State, args: &[&str]) {
     state.status = 0;
-    if let Err(err) = fs::rename(tokens[1], tokens[2]) {
-        handle_ioerror(state, &err)
+    if let Err(err) = fcntl::renameat(None, args[1], None, args[2]) {
+        handle_nixerror(state, &err)
     }
 }
 
-pub fn do_cpcat(state: &mut State, tokens: Vec<&str>) {
+// pub fn do_cpcat1(state: &mut State, args: &[&str]) {
+//     state.status = 0;
+//     let fin = if args[1] == "-" {
+//         0
+//     } else {
+//         match fcntl::open(args[1], fcntl::OFlag::O_RDONLY, stat::Mode::S_IRWXU) {
+//             Ok(fd) => fd,
+//             Err(err) => {
+//                 handle_nixerror(state, &err);
+//                 return;
+//             }
+//         }
+//     };
+// }
+
+pub fn do_cpcat(state: &mut State, args: &[&str]) {
     state.status = 0;
 
-    let mut fin: Box<dyn io::Read + 'static> = if tokens[1] == "-" {
+    let mut fin: Box<dyn io::Read + 'static> = if args[1] == "-" {
         Box::new(io::stdin())
     } else {
-        match fs::OpenOptions::new().read(true).open(tokens[1]) {
+        match fs::OpenOptions::new().read(true).open(args[1]) {
             Ok(file) => Box::new(file),
             Err(err) => {
                 handle_ioerror(state, &err);
@@ -237,13 +264,13 @@ pub fn do_cpcat(state: &mut State, tokens: Vec<&str>) {
         }
     };
 
-    let mut fout: Box<dyn io::Write + 'static> = if tokens[2] == "-" {
+    let mut fout: Box<dyn io::Write + 'static> = if args[2] == "-" {
         Box::new(io::stdout())
     } else {
         match fs::OpenOptions::new()
             .write(true)
             .create(true)
-            .open(tokens[2])
+            .open(args[2])
         {
             Ok(file) => Box::new(file),
             Err(err) => {
@@ -257,7 +284,9 @@ pub fn do_cpcat(state: &mut State, tokens: Vec<&str>) {
         if count == 0 {
             break;
         }
-        fout.write(&buf[0..count]);
+        if fout.write(&buf[0..count]).is_err() {
+            break;
+        }
     }
 }
 
@@ -287,4 +316,8 @@ pub fn default_builtins() -> Vec<Builtin> {
         Builtin::new(do_rename, "rename", "Rename file"),
         Builtin::new(do_cpcat, "cpcat", "Copy file"),
     ]
+}
+
+pub fn find_builtin<'a>(builtins: &'a [Builtin], name: &str) -> Option<&'a Builtin> {
+    builtins.iter().find(|&b| b.cmd == name)
 }
