@@ -1,6 +1,7 @@
 use nix::fcntl;
 use nix::sys::stat;
 use nix::unistd;
+use nix::NixPath;
 
 // TODO: eliminate these crates by using only nix::*
 use std::fmt;
@@ -124,14 +125,14 @@ pub fn do_dir_make(_: &mut State, args: &[&str]) -> Result<i32, Error> {
         let path = std::path::PathBuf::from(arg);
         if let Err(err) = unistd::mkdir(&path, stat::Mode::S_IRWXU) {
             report_nixerror(&err);
-            status = 1;
+            status = nix::errno::errno();
         }
     }
     Ok(status)
 }
 
-use nix::NixPath;
-
+// missing in libc, used libc::mkdir as an example
+#[inline]
 fn rmdir<P: ?Sized + NixPath>(path: &P) -> nix::Result<()> {
     let res = path.with_nix_path(|cstr| unsafe { libc::rmdir(cstr.as_ptr()) })?;
     nix::errno::Errno::result(res).map(drop)
@@ -143,7 +144,7 @@ pub fn do_dir_remove(_: &mut State, args: &[&str]) -> Result<i32, Error> {
         let path = std::path::PathBuf::from(arg);
         if let Err(err) = rmdir(&path) {
             report_nixerror(&err);
-            status = 1
+            status = nix::errno::errno();
         }
     }
     Ok(status)
@@ -158,8 +159,7 @@ fn get_dir_entries(args: &[&str]) -> std::io::Result<fs::ReadDir> {
     fs::read_dir(path)
 }
 
-pub fn do_dir_list(state: &mut State, args: &[&str]) -> Result<i32, Error> {
-    state.status = 0;
+pub fn do_dir_list(_: &mut State, args: &[&str]) -> Result<i32, Error> {
     let entries = get_dir_entries(args)?;
     for entry in entries {
         if let Ok(entry) = entry {
@@ -170,8 +170,7 @@ pub fn do_dir_list(state: &mut State, args: &[&str]) -> Result<i32, Error> {
     Ok(0)
 }
 
-pub fn do_dir_inspect(state: &mut State, args: &[&str]) -> Result<i32, Error> {
-    state.status = 0;
+pub fn do_dir_inspect(_: &mut State, args: &[&str]) -> Result<i32, Error> {
     let entries = get_dir_entries(args)?;
     for entry in entries {
         if let Ok(entry) = entry {
@@ -206,12 +205,12 @@ pub fn do_link_soft(_: &mut State, args: &[&str]) -> Result<i32, Error> {
 pub fn do_link_read(_: &mut State, args: &[&str]) -> Result<i32, Error> {
     let mut status = 0;
     for arg in &args[1..] {
-        let arg = std::path::PathBuf::from(arg);
-        match fcntl::readlink(&arg) {
+        let path = std::path::PathBuf::from(arg);
+        match fcntl::readlink(&path) {
             Ok(path) => println!("{}", path.to_str().unwrap()),
             Err(err) => {
-                status = 1;
-                report_nixerror(&err)
+                report_nixerror(&err);
+                status = nix::errno::errno();
             }
         }
     }
@@ -223,8 +222,8 @@ pub fn do_unlink(_: &mut State, args: &[&str]) -> Result<i32, Error> {
     for arg in &args[1..] {
         let path = std::path::PathBuf::from(arg);
         if let Err(err) = unistd::unlink(&path) {
-            status = 1;
-            report_nixerror(&err)
+            report_nixerror(&err);
+            status = nix::errno::errno();
         }
     }
     Ok(status)
@@ -250,16 +249,20 @@ pub fn do_rename(_: &mut State, args: &[&str]) -> Result<i32, Error> {
 //     };
 // }
 
-pub fn do_cpcat(state: &mut State, args: &[&str]) -> Result<i32, Error> {
-    state.status = 0;
+use std::io::Read;
 
-    let mut fin: Box<dyn io::Read + 'static> = if args[1] == "-" {
+pub fn do_cpcat(_: &mut State, args: &[&str]) -> Result<i32, Error> {
+    if args.len() < 3 {
+        return Ok(1);
+    }
+    // open input
+    let mut fin: Box<dyn io::Read> = if args[1] == "-" {
         Box::new(io::stdin())
     } else {
         Box::new(fs::OpenOptions::new().read(true).open(args[1])?)
     };
-
-    let mut fout: Box<dyn io::Write + 'static> = if args[2] == "-" {
+    // open output
+    let mut fout: Box<dyn io::Write> = if args[2] == "-" {
         Box::new(io::stdout())
     } else {
         Box::new(
@@ -269,8 +272,10 @@ pub fn do_cpcat(state: &mut State, args: &[&str]) -> Result<i32, Error> {
                 .open(args[2])?,
         )
     };
+    // do the copy
     let mut buf = [0; 4096];
-    while let Ok(count) = fin.read(&mut buf) {
+    loop {
+        let count = fin.read(&mut buf)?;
         if count == 0 {
             break;
         }

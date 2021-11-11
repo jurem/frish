@@ -30,7 +30,7 @@ fn wait_process(state: &mut State, pid: Pid) -> i32 {
 fn redirect_stdin(infile: Option<&str>) -> Result<Option<RawFd>, Error> {
     if let Some(infile) = infile {
         crate::log!("Redirecting stdin to {}", infile);
-        let fd = open(infile, OFlag::O_RDONLY, Mode::S_IRWXU)?;
+        let fd = open(infile, OFlag::O_RDONLY, Mode::empty())?;
         let fdold = dup(0).unwrap();
         dup2(fd, 0).unwrap();
         close(fd).unwrap();
@@ -50,8 +50,9 @@ fn restore_stdin(fdinold: Option<RawFd>) {
 fn redirect_stdout(outfile: Option<&str>) -> Result<Option<RawFd>, Error> {
     if let Some(outfile) = outfile {
         crate::log!("Redirecting stdout to {}", outfile);
-        let mode = OFlag::O_CREAT | OFlag::O_WRONLY | OFlag::O_TRUNC;
-        let fd = open(outfile, mode, Mode::empty())?;
+        let flag = OFlag::O_CREAT | OFlag::O_WRONLY | OFlag::O_TRUNC;
+        let mode = Mode::S_IRUSR | Mode::S_IWUSR;
+        let fd = open(outfile, flag, mode)?;
         let fdold = dup(0).unwrap();
         dup2(fd, 1).unwrap();
         close(fd).unwrap();

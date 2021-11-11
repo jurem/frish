@@ -31,7 +31,9 @@ fn read_evaluate(builtins: &[Builtin], state: &mut State) {
     let mut line = String::new();
     match io::stdin().read_line(&mut line) {
         Ok(0) => state.running = false,
-        Ok(_len) => {
+        Ok(len) => {
+            // println!("Len: {}", len);
+
             if let Some(cmd) = parser::parse(&line) {
                 let res = match find_builtin(&builtins, cmd.args[0]) {
                     Some(builtin) => run_builtin(builtin, state, cmd),
@@ -54,6 +56,16 @@ fn read_evaluate(builtins: &[Builtin], state: &mut State) {
         }
     }
 }
+
+// fn parse_readline() -> Result<i32, io::Error> {
+//     let mut line = String::new();
+//     let len = io::stdin().read_line(&mut line)?;
+//     println!("Len: {}", len);
+//     match len {
+
+//     }
+//     Ok(0)
+// }
 
 fn main() {
     let builtins = builtins::default_builtins();
