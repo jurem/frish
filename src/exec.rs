@@ -3,8 +3,9 @@ use nix::sys::stat::Mode;
 use nix::sys::wait::waitpid;
 use nix::unistd::{close, dup, dup2, execvp, fork, ForkResult, Pid};
 use nix::NixPath;
-use std::io::Error;
 use std::os::unix::io::RawFd;
+
+use std::io;
 
 use crate::builtins::Builtin;
 use crate::common::debug;
@@ -27,7 +28,7 @@ fn wait_process(state: &mut State, pid: Pid) -> i32 {
     }
 }
 
-fn redirect_stdin(infile: Option<&str>) -> Result<Option<RawFd>, Error> {
+fn redirect_stdin(infile: Option<&str>) -> io::Result<Option<RawFd>> {
     if let Some(infile) = infile {
         crate::log!("Redirecting stdin to {}", infile);
         let fd = open(infile, OFlag::O_RDONLY, Mode::empty())?;
@@ -47,7 +48,7 @@ fn restore_stdin(fdinold: Option<RawFd>) {
     }
 }
 
-fn redirect_stdout(outfile: Option<&str>) -> Result<Option<RawFd>, Error> {
+fn redirect_stdout(outfile: Option<&str>) -> io::Result<Option<RawFd>> {
     if let Some(outfile) = outfile {
         crate::log!("Redirecting stdout to {}", outfile);
         let flag = OFlag::O_CREAT | OFlag::O_WRONLY | OFlag::O_TRUNC;
@@ -83,7 +84,7 @@ fn exec_external(prog: &str, args: &[&str]) {
     .unwrap();
 }
 
-pub fn run_external(state: &mut State, cmd: Command) -> Result<i32, Error> {
+pub fn run_external(state: &mut State, cmd: Command) -> io::Result<i32> {
     debug(state, "Executing external command");
     match unsafe { fork() }? {
         ForkResult::Parent { child } => {
@@ -99,7 +100,7 @@ pub fn run_external(state: &mut State, cmd: Command) -> Result<i32, Error> {
     Ok(0) //TODO
 }
 
-pub fn run_builtin(builtin: &Builtin, state: &mut State, cmd: Command) -> Result<i32, Error> {
+pub fn run_builtin(builtin: &Builtin, state: &mut State, cmd: Command) -> io::Result<i32> {
     debug(state, "Running builtin");
     if cmd.background {
         let status = (builtin.handler)(state, &cmd.args)?;

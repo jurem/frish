@@ -3,8 +3,6 @@ use nix::sys::stat;
 use nix::unistd;
 use nix::NixPath;
 
-use io::Result;
-
 // TODO: eliminate these crates by using only nix::*
 use std::fmt;
 use std::fs; // portable FS functions
@@ -12,7 +10,7 @@ use std::io;
 
 use crate::common::{report_nixerror, State};
 
-type BuiltinHandler = fn(&mut State, &[&str]) -> Result<i32>;
+type BuiltinHandler = fn(&mut State, &[&str]) -> io::Result<i32>;
 
 pub struct Builtin {
     pub handler: BuiltinHandler,
@@ -41,14 +39,14 @@ impl fmt::Debug for Builtin {
 
 // ********** builtin commands **********
 
-pub fn do_help(_: &mut State, _args: &[&str]) -> Result<i32> {
+pub fn do_help(_: &mut State, _args: &[&str]) -> io::Result<i32> {
     // for b in &state.builtins {
     //     println!("{:16}{}", b.cmd, b.help);
     // }
     Ok(0)
 }
 
-pub fn do_name(state: &mut State, args: &[&str]) -> Result<i32> {
+pub fn do_name(state: &mut State, args: &[&str]) -> io::Result<i32> {
     if args.len() > 1 {
         state.name = String::from(args[1]);
     } else {
@@ -57,7 +55,7 @@ pub fn do_name(state: &mut State, args: &[&str]) -> Result<i32> {
     Ok(0)
 }
 
-pub fn do_debug(state: &mut State, args: &[&str]) -> Result<i32> {
+pub fn do_debug(state: &mut State, args: &[&str]) -> io::Result<i32> {
     if args.len() > 1 {
         state.debug = args[1] == "on";
     }
@@ -65,12 +63,12 @@ pub fn do_debug(state: &mut State, args: &[&str]) -> Result<i32> {
     Ok(0)
 }
 
-pub fn do_status(state: &mut State, _args: &[&str]) -> Result<i32> {
+pub fn do_status(state: &mut State, _args: &[&str]) -> io::Result<i32> {
     println!("{}", state.status);
     Ok(0)
 }
 
-pub fn do_print(_: &mut State, args: &[&str]) -> Result<i32> {
+pub fn do_print(_: &mut State, args: &[&str]) -> io::Result<i32> {
     let last = args.last().unwrap();
     for arg in args.iter().skip(1) {
         print!("{}", arg);
@@ -81,24 +79,24 @@ pub fn do_print(_: &mut State, args: &[&str]) -> Result<i32> {
     Ok(0)
 }
 
-pub fn do_echo(state: &mut State, args: &[&str]) -> Result<i32> {
+pub fn do_echo(state: &mut State, args: &[&str]) -> io::Result<i32> {
     do_print(state, args).and_then(|_| {
         println!("");
         Ok(0)
     })
 }
 
-pub fn do_pid(_: &mut State, _args: &[&str]) -> Result<i32> {
+pub fn do_pid(_: &mut State, _args: &[&str]) -> io::Result<i32> {
     println!("{}", unistd::getpid());
     Ok(0)
 }
 
-pub fn do_ppid(_: &mut State, _args: &[&str]) -> Result<i32> {
+pub fn do_ppid(_: &mut State, _args: &[&str]) -> io::Result<i32> {
     println!("{}", unistd::getppid());
     Ok(0)
 }
 
-pub fn do_exit(state: &mut State, args: &[&str]) -> Result<i32> {
+pub fn do_exit(state: &mut State, args: &[&str]) -> io::Result<i32> {
     state.running = false;
     let status = if args.len() > 1 {
         args[1].parse::<i32>().unwrap_or(0)
@@ -108,19 +106,19 @@ pub fn do_exit(state: &mut State, args: &[&str]) -> Result<i32> {
     Ok(status)
 }
 
-pub fn do_dir_change(_: &mut State, args: &[&str]) -> Result<i32> {
+pub fn do_dir_change(_: &mut State, args: &[&str]) -> io::Result<i32> {
     let path = if args.len() == 1 { "/" } else { args[1] };
     unistd::chdir(path)?;
     Ok(0)
 }
 
-pub fn do_dir_where(_: &mut State, _args: &[&str]) -> Result<i32> {
+pub fn do_dir_where(_: &mut State, _args: &[&str]) -> io::Result<i32> {
     let path = unistd::getcwd()?;
     println!("{}", path.display());
     Ok(0)
 }
 
-pub fn do_dir_make(_: &mut State, args: &[&str]) -> Result<i32> {
+pub fn do_dir_make(_: &mut State, args: &[&str]) -> io::Result<i32> {
     let mut status = 0;
     for arg in &args[1..] {
         let path = std::path::PathBuf::from(arg);
@@ -139,7 +137,7 @@ fn rmdir<P: ?Sized + NixPath>(path: &P) -> nix::Result<()> {
     nix::errno::Errno::result(res).map(drop)
 }
 
-pub fn do_dir_remove(_: &mut State, args: &[&str]) -> Result<i32> {
+pub fn do_dir_remove(_: &mut State, args: &[&str]) -> io::Result<i32> {
     let mut status = 0;
     for arg in &args[1..] {
         let path = std::path::PathBuf::from(arg);
@@ -160,7 +158,7 @@ fn get_dir_entries(args: &[&str]) -> std::io::Result<fs::ReadDir> {
     fs::read_dir(path)
 }
 
-pub fn do_dir_list(_: &mut State, args: &[&str]) -> Result<i32> {
+pub fn do_dir_list(_: &mut State, args: &[&str]) -> io::Result<i32> {
     let entries = get_dir_entries(args)?;
     for entry in entries {
         if let Ok(entry) = entry {
@@ -171,7 +169,7 @@ pub fn do_dir_list(_: &mut State, args: &[&str]) -> Result<i32> {
     Ok(0)
 }
 
-pub fn do_dir_inspect(_: &mut State, args: &[&str]) -> Result<i32> {
+pub fn do_dir_inspect(_: &mut State, args: &[&str]) -> io::Result<i32> {
     let entries = get_dir_entries(args)?;
     for entry in entries {
         if let Ok(entry) = entry {
@@ -187,7 +185,7 @@ pub fn do_dir_inspect(_: &mut State, args: &[&str]) -> Result<i32> {
     Ok(0)
 }
 
-pub fn do_link_hard(_: &mut State, args: &[&str]) -> Result<i32> {
+pub fn do_link_hard(_: &mut State, args: &[&str]) -> io::Result<i32> {
     unistd::linkat(
         None,
         args[1],
@@ -198,12 +196,12 @@ pub fn do_link_hard(_: &mut State, args: &[&str]) -> Result<i32> {
     Ok(0)
 }
 
-pub fn do_link_soft(_: &mut State, args: &[&str]) -> Result<i32> {
+pub fn do_link_soft(_: &mut State, args: &[&str]) -> io::Result<i32> {
     unistd::symlinkat(args[1], None, args[2])?;
     Ok(0)
 }
 
-pub fn do_link_read(_: &mut State, args: &[&str]) -> Result<i32> {
+pub fn do_link_read(_: &mut State, args: &[&str]) -> io::Result<i32> {
     let mut status = 0;
     for arg in &args[1..] {
         let path = std::path::PathBuf::from(arg);
@@ -218,7 +216,7 @@ pub fn do_link_read(_: &mut State, args: &[&str]) -> Result<i32> {
     Ok(status)
 }
 
-pub fn do_unlink(_: &mut State, args: &[&str]) -> Result<i32> {
+pub fn do_unlink(_: &mut State, args: &[&str]) -> io::Result<i32> {
     let mut status = 0;
     for arg in &args[1..] {
         let path = std::path::PathBuf::from(arg);
@@ -230,7 +228,7 @@ pub fn do_unlink(_: &mut State, args: &[&str]) -> Result<i32> {
     Ok(status)
 }
 
-pub fn do_rename(_: &mut State, args: &[&str]) -> Result<i32> {
+pub fn do_rename(_: &mut State, args: &[&str]) -> io::Result<i32> {
     fcntl::renameat(None, args[1], None, args[2])?;
     Ok(0)
 }
@@ -252,7 +250,7 @@ pub fn do_rename(_: &mut State, args: &[&str]) -> Result<i32> {
 
 use std::io::Read;
 
-pub fn do_cpcat(_: &mut State, args: &[&str]) -> Result<i32> {
+pub fn do_cpcat(_: &mut State, args: &[&str]) -> io::Result<i32> {
     if args.len() < 3 {
         return Ok(1);
     }
