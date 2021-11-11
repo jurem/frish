@@ -76,8 +76,8 @@ fn exec_external(prog: &str, args: &[&str]) {
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
     // let args = args. into_iter().map(|arg| arg.as_ptr()).collect();
-    prog.with_nix_path(|prog| match execvp(prog, args.as_ref()) {
-        Err(_) => eprintln!("Invalid command"),
+    prog.with_nix_path(|cprog| match execvp(cprog, args.as_ref()) {
+        Err(_) => eprintln!("Invalid command {}", prog),
         Ok(_) => {}
     })
     .unwrap();
@@ -106,7 +106,10 @@ pub fn run_builtin(builtin: &Builtin, state: &mut State, cmd: Command) -> Result
         Ok(status)
     } else {
         let fdinold = redirect_stdin(cmd.inredirect)?;
-        let fdoutold = redirect_stdout(cmd.outredirect)?;
+        let fdoutold = redirect_stdout(cmd.outredirect).or_else(|err| {
+            restore_stdin(fdinold);
+            Err(err)
+        })?;
         let status = (builtin.handler)(state, &cmd.args)?;
         restore_stdin(fdinold);
         restore_stdout(fdoutold);

@@ -31,7 +31,7 @@ fn read_evaluate(builtins: &[Builtin], state: &mut State) {
     let mut line = String::new();
     match io::stdin().read_line(&mut line) {
         Ok(0) => state.running = false,
-        Ok(len) => {
+        Ok(_) => {
             // println!("Len: {}", len);
 
             if let Some(cmd) = parser::parse(&line) {
