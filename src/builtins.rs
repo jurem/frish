@@ -2,25 +2,27 @@ use nix::fcntl;
 use nix::sys::stat;
 use nix::unistd;
 
+// TODO: eliminate these crates by using only nix::*
 use std::fmt;
 use std::fs; // portable FS functions
 use std::io;
+use std::io::Error;
 
-use crate::common::{handle_ioerror, handle_nixerror, State};
+use crate::common::{report_nixerror, State};
 
-type BuiltinFun = fn(&mut State, &[&str]);
+type BuiltinHandler = fn(&mut State, &[&str]) -> Result<i32, Error>;
 
 pub struct Builtin {
-    pub fun: BuiltinFun,
-    pub cmd: String,
+    pub handler: BuiltinHandler,
+    pub command: String,
     pub help: String,
 }
 
 impl Builtin {
-    pub fn new(fun: BuiltinFun, cmd: &str, help: &str) -> Builtin {
+    pub fn new(fun: BuiltinHandler, cmd: &str, help: &str) -> Builtin {
         Builtin {
-            fun: fun,
-            cmd: String::from(cmd),
+            handler: fun,
+            command: String::from(cmd),
             help: String::from(help),
         }
     }
@@ -29,7 +31,7 @@ impl Builtin {
 impl fmt::Debug for Builtin {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Builtin")
-            .field("cmd", &self.cmd)
+            .field("cmd", &self.command)
             .field("help", &self.help)
             .finish()
     }
@@ -37,37 +39,36 @@ impl fmt::Debug for Builtin {
 
 // ********** builtin commands **********
 
-pub fn do_help(state: &mut State, _args: &[&str]) {
-    state.status = 0;
+pub fn do_help(_: &mut State, _args: &[&str]) -> Result<i32, Error> {
     // for b in &state.builtins {
     //     println!("{:16}{}", b.cmd, b.help);
     // }
+    Ok(0)
 }
 
-pub fn do_name(state: &mut State, args: &[&str]) {
-    state.status = 0;
+pub fn do_name(state: &mut State, args: &[&str]) -> Result<i32, Error> {
     if args.len() > 1 {
         state.name = String::from(args[1]);
     } else {
         println!("{}", state.name);
     }
+    Ok(0)
 }
 
-pub fn do_debug(state: &mut State, args: &[&str]) {
-    state.status = 0;
+pub fn do_debug(state: &mut State, args: &[&str]) -> Result<i32, Error> {
     if args.len() > 1 {
         state.debug = args[1] == "on";
     }
     println!("Debug is {}", if state.debug { "on" } else { "off" });
+    Ok(0)
 }
 
-pub fn do_status(state: &mut State, _args: &[&str]) {
+pub fn do_status(state: &mut State, _args: &[&str]) -> Result<i32, Error> {
     println!("{}", state.status);
-    state.status = 0;
+    Ok(0)
 }
 
-pub fn do_print(state: &mut State, args: &[&str]) {
-    state.status = 0;
+pub fn do_print(_: &mut State, args: &[&str]) -> Result<i32, Error> {
     let last = args.last().unwrap();
     for arg in args.iter().skip(1) {
         print!("{}", arg);
@@ -75,54 +76,58 @@ pub fn do_print(state: &mut State, args: &[&str]) {
             print!(" ");
         };
     }
+    Ok(0)
 }
 
-pub fn do_echo(state: &mut State, args: &[&str]) {
-    do_print(state, args);
-    println!("");
+pub fn do_echo(state: &mut State, args: &[&str]) -> Result<i32, Error> {
+    do_print(state, args).and_then(|_| {
+        println!("");
+        Ok(0)
+    })
 }
 
-pub fn do_pid(state: &mut State, _args: &[&str]) {
-    state.status = 0;
+pub fn do_pid(_: &mut State, _args: &[&str]) -> Result<i32, Error> {
     println!("{}", unistd::getpid());
+    Ok(0)
 }
 
-pub fn do_ppid(state: &mut State, _args: &[&str]) {
-    state.status = 0;
+pub fn do_ppid(_: &mut State, _args: &[&str]) -> Result<i32, Error> {
     println!("{}", unistd::getppid());
+    Ok(0)
 }
 
-pub fn do_exit(state: &mut State, args: &[&str]) {
-    if args.len() > 1 {
-        state.status = args[1].parse::<i32>().unwrap_or(0);
-    }
+pub fn do_exit(state: &mut State, args: &[&str]) -> Result<i32, Error> {
     state.running = false;
-}
-
-pub fn do_dir_change(state: &mut State, args: &[&str]) {
-    state.status = 0;
-    let path = if args.len() == 1 { "/" } else { args[1] };
-    if let Err(err) = unistd::chdir(path) {
-        handle_nixerror(state, &err);
-    }
-}
-
-pub fn do_dir_where(state: &mut State, _args: &[&str]) {
-    state.status = 0;
-    match unistd::getcwd() {
-        Ok(path) => println!("{}", path.display()),
-        Err(err) => handle_nixerror(state, &err),
+    let status = if args.len() > 1 {
+        args[1].parse::<i32>().unwrap_or(0)
+    } else {
+        0
     };
+    Ok(status)
 }
 
-pub fn do_dir_make(state: &mut State, args: &[&str]) {
-    state.status = 0;
+pub fn do_dir_change(_: &mut State, args: &[&str]) -> Result<i32, Error> {
+    let path = if args.len() == 1 { "/" } else { args[1] };
+    unistd::chdir(path)?;
+    Ok(0)
+}
+
+pub fn do_dir_where(_: &mut State, _args: &[&str]) -> Result<i32, Error> {
+    let path = unistd::getcwd()?;
+    println!("{}", path.display());
+    Ok(0)
+}
+
+pub fn do_dir_make(_: &mut State, args: &[&str]) -> Result<i32, Error> {
+    let mut status = 0;
     for arg in &args[1..] {
         let path = std::path::PathBuf::from(arg);
         if let Err(err) = unistd::mkdir(&path, stat::Mode::S_IRWXU) {
-            handle_nixerror(state, &err);
+            report_nixerror(&err);
+            status = 1;
         }
     }
+    Ok(status)
 }
 
 use nix::NixPath;
@@ -132,14 +137,16 @@ fn rmdir<P: ?Sized + NixPath>(path: &P) -> nix::Result<()> {
     nix::errno::Errno::result(res).map(drop)
 }
 
-pub fn do_dir_remove(state: &mut State, args: &[&str]) {
-    state.status = 0;
+pub fn do_dir_remove(_: &mut State, args: &[&str]) -> Result<i32, Error> {
+    let mut status = 0;
     for arg in &args[1..] {
         let path = std::path::PathBuf::from(arg);
         if let Err(err) = rmdir(&path) {
-            handle_nixerror(state, &err)
+            report_nixerror(&err);
+            status = 1
         }
     }
+    Ok(status)
 }
 
 fn get_dir_entries(args: &[&str]) -> std::io::Result<fs::ReadDir> {
@@ -151,87 +158,81 @@ fn get_dir_entries(args: &[&str]) -> std::io::Result<fs::ReadDir> {
     fs::read_dir(path)
 }
 
-pub fn do_dir_list(state: &mut State, args: &[&str]) {
+pub fn do_dir_list(state: &mut State, args: &[&str]) -> Result<i32, Error> {
     state.status = 0;
-    match get_dir_entries(args) {
-        Ok(entries) => {
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    print!("{}  ", entry.file_name().to_str().unwrap())
-                }
-            }
-            println!();
+    let entries = get_dir_entries(args)?;
+    for entry in entries {
+        if let Ok(entry) = entry {
+            print!("{}  ", entry.file_name().to_str().unwrap())
         }
-        Err(err) => handle_ioerror(state, &err),
     }
+    println!();
+    Ok(0)
 }
 
-pub fn do_dir_inspect(state: &mut State, args: &[&str]) {
+pub fn do_dir_inspect(state: &mut State, args: &[&str]) -> Result<i32, Error> {
     state.status = 0;
-    match get_dir_entries(args) {
-        Ok(entries) => {
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    if let Ok(metadata) = entry.metadata() {
-                        println!(
-                            "{:?} {}  ",
-                            metadata.len(),
-                            entry.file_name().to_str().unwrap()
-                        )
-                    }
-                }
+    let entries = get_dir_entries(args)?;
+    for entry in entries {
+        if let Ok(entry) = entry {
+            if let Ok(metadata) = entry.metadata() {
+                println!(
+                    "{:?} {}  ",
+                    metadata.len(),
+                    entry.file_name().to_str().unwrap()
+                )
             }
         }
-        Err(err) => handle_ioerror(state, &err),
     }
+    Ok(0)
 }
 
-pub fn do_link_hard(state: &mut State, args: &[&str]) {
-    state.status = 0;
-    if let Err(err) = unistd::linkat(
+pub fn do_link_hard(_: &mut State, args: &[&str]) -> Result<i32, Error> {
+    unistd::linkat(
         None,
         args[1],
         None,
         args[2],
         unistd::LinkatFlags::NoSymlinkFollow,
-    ) {
-        handle_nixerror(state, &err);
-    }
+    )?;
+    Ok(0)
 }
 
-pub fn do_link_soft(state: &mut State, args: &[&str]) {
-    state.status = 0;
-    if let Err(err) = unistd::symlinkat(args[1], None, args[2]) {
-        handle_nixerror(state, &err);
-    }
+pub fn do_link_soft(_: &mut State, args: &[&str]) -> Result<i32, Error> {
+    unistd::symlinkat(args[1], None, args[2])?;
+    Ok(0)
 }
 
-pub fn do_link_read(state: &mut State, args: &[&str]) {
-    state.status = 0;
+pub fn do_link_read(_: &mut State, args: &[&str]) -> Result<i32, Error> {
+    let mut status = 0;
     for arg in &args[1..] {
         let arg = std::path::PathBuf::from(arg);
         match fcntl::readlink(&arg) {
             Ok(path) => println!("{}", path.to_str().unwrap()),
-            Err(err) => handle_nixerror(state, &err),
+            Err(err) => {
+                status = 1;
+                report_nixerror(&err)
+            }
         }
     }
+    Ok(status)
 }
 
-pub fn do_unlink(state: &mut State, args: &[&str]) {
-    state.status = 0;
+pub fn do_unlink(_: &mut State, args: &[&str]) -> Result<i32, Error> {
+    let mut status = 0;
     for arg in &args[1..] {
         let path = std::path::PathBuf::from(arg);
         if let Err(err) = unistd::unlink(&path) {
-            handle_nixerror(state, &err)
+            status = 1;
+            report_nixerror(&err)
         }
     }
+    Ok(status)
 }
 
-pub fn do_rename(state: &mut State, args: &[&str]) {
-    state.status = 0;
-    if let Err(err) = fcntl::renameat(None, args[1], None, args[2]) {
-        handle_nixerror(state, &err)
-    }
+pub fn do_rename(_: &mut State, args: &[&str]) -> Result<i32, Error> {
+    fcntl::renameat(None, args[1], None, args[2])?;
+    Ok(0)
 }
 
 // pub fn do_cpcat1(state: &mut State, args: &[&str]) {
@@ -249,45 +250,33 @@ pub fn do_rename(state: &mut State, args: &[&str]) {
 //     };
 // }
 
-pub fn do_cpcat(state: &mut State, args: &[&str]) {
+pub fn do_cpcat(state: &mut State, args: &[&str]) -> Result<i32, Error> {
     state.status = 0;
 
     let mut fin: Box<dyn io::Read + 'static> = if args[1] == "-" {
         Box::new(io::stdin())
     } else {
-        match fs::OpenOptions::new().read(true).open(args[1]) {
-            Ok(file) => Box::new(file),
-            Err(err) => {
-                handle_ioerror(state, &err);
-                return;
-            }
-        }
+        Box::new(fs::OpenOptions::new().read(true).open(args[1])?)
     };
 
     let mut fout: Box<dyn io::Write + 'static> = if args[2] == "-" {
         Box::new(io::stdout())
     } else {
-        match fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .open(args[2])
-        {
-            Ok(file) => Box::new(file),
-            Err(err) => {
-                handle_ioerror(state, &err);
-                return;
-            }
-        }
+        Box::new(
+            fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .open(args[2])?,
+        )
     };
     let mut buf = [0; 4096];
     while let Ok(count) = fin.read(&mut buf) {
         if count == 0 {
             break;
         }
-        if fout.write(&buf[0..count]).is_err() {
-            break;
-        }
+        fout.write(&buf[0..count])?;
     }
+    Ok(0)
 }
 
 // ********** default builtins **********
@@ -319,5 +308,5 @@ pub fn default_builtins() -> Vec<Builtin> {
 }
 
 pub fn find_builtin<'a>(builtins: &'a [Builtin], name: &str) -> Option<&'a Builtin> {
-    builtins.iter().find(|&b| b.cmd == name)
+    builtins.iter().find(|&b| b.command == name)
 }

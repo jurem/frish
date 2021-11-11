@@ -1,17 +1,13 @@
-use nix::errno;
 use std::io;
 
 #[derive(Debug)]
 pub struct State {
     pub name: String,
     pub debug: bool,
-    pub fd_terminal: i32,
     pub interactive: bool,
     pub running: bool,
+    pub fd_terminal: i32,
     pub status: i32,
-    pub background: bool,
-    pub inredirect: String,
-    pub outredirect: String,
 }
 
 impl State {
@@ -19,34 +15,38 @@ impl State {
         State {
             name: String::from(name),
             debug: false,
-            fd_terminal: 0,
             interactive: true,
             running: true,
+            fd_terminal: 0,
             status: 0,
-            background: false,
-            inredirect: String::new(),
-            outredirect: String::new(),
         }
     }
 }
 
+pub struct Command<'a> {
+    pub args: Vec<&'a str>,
+    pub background: bool,
+    pub inredirect: Option<&'a str>,
+    pub outredirect: Option<&'a str>,
+}
+
 // ********** helper functions **********
 
-pub fn handle_error(state: &mut State, errno: i32, msg: &str) {
-    state.status = errno;
-    eprintln!("Error: {}", msg);
+pub fn report_error(err: &io::Error) {
+    eprintln!("Error: {}", err);
 }
 
-pub fn handle_ioerror(state: &mut State, err: &io::Error) {
-    handle_error(state, errno::errno(), &err.to_string());
-}
-
-pub fn handle_nixerror(state: &mut State, err: &errno::Errno) {
-    handle_error(state, errno::errno(), &err.to_string());
+pub fn report_nixerror(err: &nix::errno::Errno) {
+    eprintln!("Error: {}", err);
 }
 
 pub fn debug(state: &State, msg: &str) {
     if state.debug {
         eprintln!("{}", msg);
     }
+}
+
+#[macro_export]
+macro_rules! log {
+    ($( $args:expr ),*) => { eprintln!( $( $args ),* ); }
 }

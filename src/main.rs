@@ -8,7 +8,7 @@ pub mod exec;
 pub mod parser;
 
 use crate::builtins::{find_builtin, Builtin};
-use crate::common::{debug, handle_ioerror, State};
+use crate::common::{debug, report_error, State};
 use crate::exec::{run_builtin, run_external};
 
 fn print_prompt(state: &State) {
@@ -32,16 +32,26 @@ fn read_evaluate(builtins: &[Builtin], state: &mut State) {
     match io::stdin().read_line(&mut line) {
         Ok(0) => state.running = false,
         Ok(_len) => {
-            if let Some(p) = parser::parse(&line) {
-                match find_builtin(&builtins, p.args[0]) {
-                    Some(builtin) => run_builtin(builtin, state, &p.args),
-                    None => run_external(state, &p.args),
+            if let Some(cmd) = parser::parse(&line) {
+                let res = match find_builtin(&builtins, cmd.args[0]) {
+                    Some(builtin) => run_builtin(builtin, state, cmd),
+                    None => run_external(state, cmd),
+                };
+                match res {
+                    Ok(status) => state.status = status,
+                    Err(err) => {
+                        state.status = nix::errno::errno();
+                        report_error(&err);
+                    }
                 }
             } else {
                 debug(state, "No command given.");
             }
         }
-        Err(err) => handle_ioerror(state, &err),
+        Err(err) => {
+            state.status = nix::errno::errno();
+            report_error(&err);
+        }
     }
 }
 

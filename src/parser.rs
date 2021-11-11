@@ -1,3 +1,5 @@
+use crate::common::Command;
+
 pub fn tokenize(line: &str) -> Vec<&str> {
     let mut tokens = Vec::new();
     let mut pos = 0;
@@ -52,14 +54,7 @@ pub fn tokenize(line: &str) -> Vec<&str> {
     return tokens;
 }
 
-pub struct Parse<'a> {
-    pub args: Vec<&'a str>,
-    pub background: bool,
-    pub inredirect: Option<String>,
-    pub outredirect: Option<String>,
-}
-
-pub fn parse(line: &str) -> Option<Parse> {
+pub fn parse(line: &str) -> Option<Command> {
     let tokens = tokenize(&line);
     if tokens.len() == 0 {
         None
@@ -73,19 +68,19 @@ pub fn parse(line: &str) -> Option<Parse> {
         // check for output redirection
         let out = if tokens[last].starts_with(">") {
             last -= 1;
-            Some(String::from(&tokens[last + 1][1..]))
+            Some(&tokens[last + 1][1..])
         } else {
             None
         };
         // check for input redirection
         let inr = if tokens[last].starts_with("<") {
             last -= 1;
-            Some(String::from(&tokens[last + 1][1..]))
+            Some(&tokens[last + 1][1..])
         } else {
             None
         };
         // return
-        Some(Parse {
+        Some(Command {
             args: tokens[0..last + 1].to_vec(),
             background: back,
             inredirect: inr,

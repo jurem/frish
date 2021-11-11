@@ -2,12 +2,13 @@ use nix::fcntl::{open, OFlag};
 use nix::sys::stat::Mode;
 use nix::sys::wait::waitpid;
 use nix::unistd::{close, dup, dup2, execvp, fork, ForkResult, Pid};
+use nix::NixPath;
+use std::io::Error;
 use std::os::unix::io::RawFd;
 
-use crate::builtins::{find_builtin, Builtin};
-use crate::common::State;
-use crate::common::{debug, handle_ioerror};
-use crate::parser;
+use crate::builtins::Builtin;
+use crate::common::debug;
+use crate::common::{Command, State};
 
 fn wait_process(state: &mut State, pid: Pid) -> i32 {
     let msg = format!("Waiting for {}.\n", pid);
@@ -26,63 +27,90 @@ fn wait_process(state: &mut State, pid: Pid) -> i32 {
     }
 }
 
-fn redirect_in(infile: &str) -> Option<RawFd> {
-    if infile.is_empty() {
-        None
+fn redirect_stdin(infile: Option<&str>) -> Result<Option<RawFd>, Error> {
+    if let Some(infile) = infile {
+        crate::log!("Redirecting stdin to {}", infile);
+        let fd = open(infile, OFlag::O_RDONLY, Mode::S_IRWXU)?;
+        let fdold = dup(0).unwrap();
+        dup2(fd, 0).unwrap();
+        close(fd).unwrap();
+        Ok(Some(fdold))
     } else {
-        let fdin = open(infile, OFlag::O_RDONLY, Mode::S_IRWXU).unwrap();
-        let fdinold = dup(0).unwrap();
-        dup2(fdin, 0).unwrap();
-        close(fdin).unwrap();
-        Some(fdinold)
+        Ok(None)
     }
 }
 
-fn restore_in(fdinold: Option<RawFd>) {
+fn restore_stdin(fdinold: Option<RawFd>) {
     if let Some(fdinold) = fdinold {
         dup2(fdinold, 0).unwrap();
         close(fdinold).unwrap();
     }
 }
 
+fn redirect_stdout(outfile: Option<&str>) -> Result<Option<RawFd>, Error> {
+    if let Some(outfile) = outfile {
+        crate::log!("Redirecting stdout to {}", outfile);
+        let mode = OFlag::O_CREAT | OFlag::O_WRONLY | OFlag::O_TRUNC;
+        let fd = open(outfile, mode, Mode::empty())?;
+        let fdold = dup(0).unwrap();
+        dup2(fd, 1).unwrap();
+        close(fd).unwrap();
+        Ok(Some(fdold))
+    } else {
+        Ok(None)
+    }
+}
+
+fn restore_stdout(fdold: Option<RawFd>) {
+    if let Some(fdold) = fdold {
+        dup2(fdold, 1).unwrap();
+        close(fdold).unwrap();
+    }
+}
+
 fn exec_external(prog: &str, args: &[&str]) {
-    let prog = std::ffi::CString::new(prog).unwrap();
     let args = args
         .into_iter()
         .map(|&arg| std::ffi::CString::new(arg))
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
     // let args = args. into_iter().map(|arg| arg.as_ptr()).collect();
-    match execvp(prog.as_ref(), args.as_ref()) {
+    prog.with_nix_path(|prog| match execvp(prog, args.as_ref()) {
         Err(_) => eprintln!("Invalid command"),
         Ok(_) => {}
-    }
+    })
+    .unwrap();
 }
-// let res = path.with_nix_path(|cstr| {
-//     unsafe { libc::chdir(cstr.as_ptr()) }
-// })?;
 
-pub fn run_external(state: &mut State, args: &[&str]) {
+pub fn run_external(state: &mut State, cmd: Command) -> Result<i32, Error> {
     debug(state, "Executing external command");
-    match unsafe { fork() } {
-        Ok(ForkResult::Parent { child }) => {
-            if !state.background {
+    match unsafe { fork() }? {
+        ForkResult::Parent { child } => {
+            if !cmd.background {
                 state.status = wait_process(state, child);
             }
         }
-        Ok(ForkResult::Child) => {
-            exec_external(args[0], args);
+        ForkResult::Child => {
+            exec_external(cmd.args[0], &cmd.args);
             std::process::exit(127);
         }
-        Err(err) => {
-            let err = std::io::Error::from(err);
-            handle_ioerror(state, &err);
-        }
     }
+    Ok(0) //TODO
 }
 
-pub fn run_builtin(builtin: &Builtin, state: &mut State, args: &[&str]) {
-    (builtin.fun)(state, args);
+pub fn run_builtin(builtin: &Builtin, state: &mut State, cmd: Command) -> Result<i32, Error> {
+    debug(state, "Running builtin");
+    if cmd.background {
+        let status = (builtin.handler)(state, &cmd.args)?;
+        Ok(status)
+    } else {
+        let fdinold = redirect_stdin(cmd.inredirect)?;
+        let fdoutold = redirect_stdout(cmd.outredirect)?;
+        let status = (builtin.handler)(state, &cmd.args)?;
+        restore_stdin(fdinold);
+        restore_stdout(fdoutold);
+        Ok(status)
+    }
 }
 
 pub fn forkit(_: &mut State) -> Pid {
