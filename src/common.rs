@@ -76,14 +76,3 @@ pub fn report_error(err: &io::Error) {
 pub fn report_nixerror(err: &nix::errno::Errno) {
     eprintln!("Error: {}", err);
 }
-
-pub fn debug(state: &State, msg: &str) {
-    if state.debug.get() {
-        eprintln!("{}", msg);
-    }
-}
-
-#[macro_export]
-macro_rules! log {
-    ($( $args:expr ),*) => { eprintln!( $( $args ),* ); }
-}

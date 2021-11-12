@@ -8,7 +8,6 @@ use std::fmt;
 use std::fs; // portable FS functions
 use std::io;
 
-use crate::common::debug;
 use crate::common::{report_nixerror, State};
 use crate::exec::{eval, read_eval_loop};
 
@@ -294,11 +293,8 @@ pub fn do_depth(state: &State, _: &[&str]) -> io::Result<i32> {
 pub fn do_subshell(state: &State, args: &[&str]) -> io::Result<i32> {
     let state = state.sub();
     if args.len() > 1 {
-        debug(&state, "Subshell command: ");
-        debug(&state, args[1]);
         eval(&state, args[1]);
     } else {
-        debug(&state, "Subshell");
         read_eval_loop(&state);
     }
     Ok(state.status.get())
