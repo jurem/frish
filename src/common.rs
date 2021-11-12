@@ -4,7 +4,7 @@ use std::io;
 
 use crate::builtins::Builtin;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct State {
     pub builtins: Vec<Builtin>,
     pub name: RefCell<String>,
@@ -24,6 +24,19 @@ impl State {
             depth: 0,
             debug: Cell::new(false),
             interactive,
+            running: Cell::new(true),
+            status: Cell::new(0),
+            lastpid: Cell::new(unistd::Pid::from_raw(0)),
+        }
+    }
+
+    pub fn sub(&self) -> State {
+        State {
+            builtins: self.builtins.clone(),
+            name: self.name.clone(), // RefCell::new(String::from(self.name.borrow())),
+            depth: self.depth + 1,
+            debug: Cell::new(self.debug.get()),
+            interactive: self.interactive,
             running: Cell::new(true),
             status: Cell::new(0),
             lastpid: Cell::new(unistd::Pid::from_raw(0)),

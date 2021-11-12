@@ -8,10 +8,13 @@ use std::fmt;
 use std::fs; // portable FS functions
 use std::io;
 
+use crate::common::debug;
 use crate::common::{report_nixerror, State};
+use crate::exec::{eval, read_eval_loop};
 
 type BuiltinHandler = fn(&State, &[&str]) -> io::Result<i32>;
 
+#[derive(Clone)]
 pub struct Builtin {
     pub handler: BuiltinHandler,
     pub command: String,
@@ -288,8 +291,17 @@ pub fn do_depth(state: &State, _: &[&str]) -> io::Result<i32> {
     Ok(0)
 }
 
-pub fn do_subshell(_: &State, args: &[&str]) -> io::Result<i32> {
-    Ok(0)
+pub fn do_subshell(state: &State, args: &[&str]) -> io::Result<i32> {
+    let state = state.sub();
+    if args.len() > 1 {
+        debug(&state, "Subshell command: ");
+        debug(&state, args[1]);
+        eval(&state, args[1]);
+    } else {
+        debug(&state, "Subshell");
+        read_eval_loop(&state);
+    }
+    Ok(state.status.get())
 }
 
 // ********** default builtins **********
@@ -304,7 +316,7 @@ pub fn default_builtins() -> Vec<Builtin> {
         Builtin::new(do_echo, "echo", "Print arguments and the newline"),
         Builtin::new(do_pid, "pid", "Print PID"),
         Builtin::new(do_ppid, "ppid", "Print PPID"),
-        Builtin::new(do_exit, "exit", "Exit from the shell"),
+        Builtin::new(do_exit, "exit", "Exit from the current shell"),
         Builtin::new(do_dir_change, "dir.change", "Change current directory"),
         Builtin::new(do_dir_where, "dir.where", "Print current working directory"),
         Builtin::new(do_dir_make, "dir.make", "Make directories"),
@@ -318,10 +330,6 @@ pub fn default_builtins() -> Vec<Builtin> {
         Builtin::new(do_rename, "rename", "Rename file"),
         Builtin::new(do_cpcat, "cpcat", "Copy file"),
         Builtin::new(do_depth, "depth", "Print the depth of the current subshell"),
-        Builtin::new(
-            do_subshell,
-            "subshell",
-            "Create a subshell and run a command in it",
-        ),
+        Builtin::new(do_subshell, "subshell", "Run a subshell with a command"),
     ]
 }
