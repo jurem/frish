@@ -8,10 +8,10 @@ use std::fmt;
 use std::fs; // portable FS functions
 use std::io;
 
-use crate::common::{report_nixerror, State};
+use crate::common::{report_nixerror, State, Status};
 use crate::exec::{eval, read_eval_loop};
 
-type BuiltinHandler = fn(&State, &[&str]) -> io::Result<i32>;
+type BuiltinHandler = fn(&State, &[&str]) -> io::Result<Status>;
 
 #[derive(Clone)]
 pub struct Builtin {
@@ -41,36 +41,36 @@ impl fmt::Debug for Builtin {
 
 // ********** builtin commands **********
 
-pub fn do_help(state: &State, _args: &[&str]) -> io::Result<i32> {
+pub fn do_help(state: &State, _args: &[&str]) -> io::Result<Status> {
     for b in &state.builtins {
         println!("{:16}{}", b.command, b.help);
     }
-    Ok(0)
+    Ok(Status::success())
 }
 
-pub fn do_name(state: &State, args: &[&str]) -> io::Result<i32> {
+pub fn do_name(state: &State, args: &[&str]) -> io::Result<Status> {
     if args.len() > 1 {
         state.set_name(args[1])
     } else {
         println!("{}", state.name.borrow());
     }
-    Ok(0)
+    Ok(Status::success())
 }
 
-pub fn do_debug(state: &State, args: &[&str]) -> io::Result<i32> {
+pub fn do_debug(state: &State, args: &[&str]) -> io::Result<Status> {
     if args.len() > 1 {
         state.debug.set(args[1] == "on");
     }
     println!("Debug is {}", if state.debug.get() { "on" } else { "off" });
-    Ok(0)
+    Ok(Status::success())
 }
 
-pub fn do_status(state: &State, _args: &[&str]) -> io::Result<i32> {
+pub fn do_status(state: &State, _args: &[&str]) -> io::Result<Status> {
     println!("{}", state.status.get());
-    Ok(0)
+    Ok(Status::success())
 }
 
-pub fn do_print(_: &State, args: &[&str]) -> io::Result<i32> {
+pub fn do_print(_: &State, args: &[&str]) -> io::Result<Status> {
     let last = args.last().unwrap();
     for arg in args.iter().skip(1) {
         print!("{}", arg);
@@ -78,49 +78,49 @@ pub fn do_print(_: &State, args: &[&str]) -> io::Result<i32> {
             print!(" ");
         };
     }
-    Ok(0)
+    Ok(Status::success())
 }
 
-pub fn do_echo(state: &State, args: &[&str]) -> io::Result<i32> {
+pub fn do_echo(state: &State, args: &[&str]) -> io::Result<Status> {
     do_print(state, args).and_then(|_| {
         println!("");
-        Ok(0)
+        Ok(Status::success())
     })
 }
 
-pub fn do_pid(_: &State, _args: &[&str]) -> io::Result<i32> {
+pub fn do_pid(_: &State, _args: &[&str]) -> io::Result<Status> {
     println!("{}", unistd::getpid());
-    Ok(0)
+    Ok(Status::success())
 }
 
-pub fn do_ppid(_: &State, _args: &[&str]) -> io::Result<i32> {
+pub fn do_ppid(_: &State, _args: &[&str]) -> io::Result<Status> {
     println!("{}", unistd::getppid());
-    Ok(0)
+    Ok(Status::success())
 }
 
-pub fn do_exit(state: &State, args: &[&str]) -> io::Result<i32> {
+pub fn do_exit(state: &State, args: &[&str]) -> io::Result<Status> {
     state.terminate();
     let status = if args.len() > 1 {
         args[1].parse::<i32>().unwrap_or(0)
     } else {
         0
     };
-    Ok(status)
+    Ok(Status::from_code(status))
 }
 
-pub fn do_dir_change(_: &State, args: &[&str]) -> io::Result<i32> {
+pub fn do_dir_change(_: &State, args: &[&str]) -> io::Result<Status> {
     let path = if args.len() == 1 { "/" } else { args[1] };
     unistd::chdir(path)?;
-    Ok(0)
+    Ok(Status::success())
 }
 
-pub fn do_dir_where(_: &State, _args: &[&str]) -> io::Result<i32> {
+pub fn do_dir_where(_: &State, _args: &[&str]) -> io::Result<Status> {
     let path = unistd::getcwd()?;
     println!("{}", path.display());
-    Ok(0)
+    Ok(Status::success())
 }
 
-pub fn do_dir_make(_: &State, args: &[&str]) -> io::Result<i32> {
+pub fn do_dir_make(_: &State, args: &[&str]) -> io::Result<Status> {
     let mut status = 0;
     for arg in &args[1..] {
         let path = std::path::PathBuf::from(arg);
@@ -129,7 +129,7 @@ pub fn do_dir_make(_: &State, args: &[&str]) -> io::Result<i32> {
             status = nix::errno::errno();
         }
     }
-    Ok(status)
+    Ok(Status::from_code(status))
 }
 
 // missing in libc, used libc::mkdir as an example
@@ -139,7 +139,7 @@ fn rmdir<P: ?Sized + NixPath>(path: &P) -> nix::Result<()> {
     nix::errno::Errno::result(res).map(drop)
 }
 
-pub fn do_dir_remove(_: &State, args: &[&str]) -> io::Result<i32> {
+pub fn do_dir_remove(_: &State, args: &[&str]) -> io::Result<Status> {
     let mut status = 0;
     for arg in &args[1..] {
         let path = std::path::PathBuf::from(arg);
@@ -148,7 +148,7 @@ pub fn do_dir_remove(_: &State, args: &[&str]) -> io::Result<i32> {
             status = nix::errno::errno();
         }
     }
-    Ok(status)
+    Ok(Status::from_code(status))
 }
 
 fn get_dir_entries(args: &[&str]) -> std::io::Result<fs::ReadDir> {
@@ -160,7 +160,7 @@ fn get_dir_entries(args: &[&str]) -> std::io::Result<fs::ReadDir> {
     fs::read_dir(path)
 }
 
-pub fn do_dir_list(_: &State, args: &[&str]) -> io::Result<i32> {
+pub fn do_dir_list(_: &State, args: &[&str]) -> io::Result<Status> {
     let entries = get_dir_entries(args)?;
     for entry in entries {
         if let Ok(entry) = entry {
@@ -168,10 +168,10 @@ pub fn do_dir_list(_: &State, args: &[&str]) -> io::Result<i32> {
         }
     }
     println!();
-    Ok(0)
+    Ok(Status::success())
 }
 
-pub fn do_dir_inspect(_: &State, args: &[&str]) -> io::Result<i32> {
+pub fn do_dir_inspect(_: &State, args: &[&str]) -> io::Result<Status> {
     let entries = get_dir_entries(args)?;
     for entry in entries {
         if let Ok(entry) = entry {
@@ -184,10 +184,10 @@ pub fn do_dir_inspect(_: &State, args: &[&str]) -> io::Result<i32> {
             }
         }
     }
-    Ok(0)
+    Ok(Status::success())
 }
 
-pub fn do_link_hard(_: &State, args: &[&str]) -> io::Result<i32> {
+pub fn do_link_hard(_: &State, args: &[&str]) -> io::Result<Status> {
     unistd::linkat(
         None,
         args[1],
@@ -195,15 +195,15 @@ pub fn do_link_hard(_: &State, args: &[&str]) -> io::Result<i32> {
         args[2],
         unistd::LinkatFlags::NoSymlinkFollow,
     )?;
-    Ok(0)
+    Ok(Status::success())
 }
 
-pub fn do_link_soft(_: &State, args: &[&str]) -> io::Result<i32> {
+pub fn do_link_soft(_: &State, args: &[&str]) -> io::Result<Status> {
     unistd::symlinkat(args[1], None, args[2])?;
-    Ok(0)
+    Ok(Status::success())
 }
 
-pub fn do_link_read(_: &State, args: &[&str]) -> io::Result<i32> {
+pub fn do_link_read(_: &State, args: &[&str]) -> io::Result<Status> {
     let mut status = 0;
     for arg in &args[1..] {
         let path = std::path::PathBuf::from(arg);
@@ -215,10 +215,10 @@ pub fn do_link_read(_: &State, args: &[&str]) -> io::Result<i32> {
             }
         }
     }
-    Ok(status)
+    Ok(Status::from_code(status))
 }
 
-pub fn do_unlink(_: &State, args: &[&str]) -> io::Result<i32> {
+pub fn do_unlink(_: &State, args: &[&str]) -> io::Result<Status> {
     let mut status = 0;
     for arg in &args[1..] {
         let path = std::path::PathBuf::from(arg);
@@ -227,12 +227,12 @@ pub fn do_unlink(_: &State, args: &[&str]) -> io::Result<i32> {
             status = nix::errno::errno();
         }
     }
-    Ok(status)
+    Ok(Status::from_code(status))
 }
 
-pub fn do_rename(_: &State, args: &[&str]) -> io::Result<i32> {
+pub fn do_rename(_: &State, args: &[&str]) -> io::Result<Status> {
     fcntl::renameat(None, args[1], None, args[2])?;
-    Ok(0)
+    Ok(Status::success())
 }
 
 // pub fn do_cpcat1(state: &mut State, args: &[&str]) {
@@ -252,9 +252,9 @@ pub fn do_rename(_: &State, args: &[&str]) -> io::Result<i32> {
 
 use std::io::Read;
 
-pub fn do_cpcat(_: &State, args: &[&str]) -> io::Result<i32> {
+pub fn do_cpcat(_: &State, args: &[&str]) -> io::Result<Status> {
     if args.len() < 3 {
-        return Ok(1);
+        return Ok(Status::from_code(127));
     }
     // open input
     let mut fin: Box<dyn io::Read> = if args[1] == "-" {
@@ -282,22 +282,22 @@ pub fn do_cpcat(_: &State, args: &[&str]) -> io::Result<i32> {
         }
         fout.write(&buf[0..count])?;
     }
-    Ok(0)
+    Ok(Status::success())
 }
 
-pub fn do_depth(state: &State, _: &[&str]) -> io::Result<i32> {
+pub fn do_depth(state: &State, _: &[&str]) -> io::Result<Status> {
     println!("{}", state.depth);
-    Ok(0)
+    Ok(Status::success())
 }
 
-pub fn do_subshell(state: &State, args: &[&str]) -> io::Result<i32> {
+pub fn do_subshell(state: &State, args: &[&str]) -> io::Result<Status> {
     let state = state.sub();
     if args.len() > 1 {
         eval(&state, args[1]);
     } else {
         read_eval_loop(&state);
     }
-    Ok(state.status.get())
+    Ok(Status::from(&state.status.get()))
 }
 
 // ********** default builtins **********

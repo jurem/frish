@@ -10,7 +10,7 @@ use std::io::Write;
 
 use crate::builtins::Builtin;
 use crate::common::report_error;
-use crate::common::{Command, State};
+use crate::common::{Command, State, Status};
 use crate::parser;
 
 use log::{debug, info};
@@ -66,15 +66,15 @@ fn restore_stdout(fdold: Option<RawFd>) {
     }
 }
 
-fn wait_process(pid: Pid) -> io::Result<i32> {
+fn wait_process(pid: Pid) -> io::Result<Status> {
     debug!("Waiting for {}.\n", pid);
     match waitpid(pid, None)? {
-        WaitStatus::Exited(_, status) => Ok(status),
+        WaitStatus::Exited(_, code) => Ok(Status::from_code(code)),
         _ => Err(io::Error::last_os_error()),
     }
 }
 
-fn fork_child_wait<F: FnMut()>(child: &mut F) -> io::Result<i32> {
+fn fork_child_wait<F: FnMut()>(child: &mut F) -> io::Result<Status> {
     match unsafe { fork()? } {
         ForkResult::Parent { child } => wait_process(child),
         ForkResult::Child => {
@@ -104,7 +104,7 @@ fn exec_external(prog: &str, args: &[&str]) -> Result<std::convert::Infallible, 
     prog.with_nix_path(|cprog| execvp(cprog, args.as_ref()))?
 }
 
-fn run_external(cmd: &Command) -> io::Result<i32> {
+fn run_external(cmd: &Command) -> io::Result<Status> {
     debug!("Running external command");
     if cmd.background {
         fork_child(&mut || {
@@ -117,7 +117,7 @@ fn run_external(cmd: &Command) -> io::Result<i32> {
                 .unwrap();
         })
         .unwrap();
-        Ok(0)
+        Ok(Status::success())
     } else {
         fork_child_wait(&mut || {
             redirect_stdin(cmd.inredirect)
@@ -131,7 +131,7 @@ fn run_external(cmd: &Command) -> io::Result<i32> {
     }
 }
 
-fn exec_builtin(state: &State, builtin: &Builtin, cmd: &Command) -> io::Result<i32> {
+fn exec_builtin(state: &State, builtin: &Builtin, cmd: &Command) -> io::Result<Status> {
     let fdinold = redirect_stdin(cmd.inredirect)?;
     let fdoutold = redirect_stdout(cmd.outredirect).or_else(|err| {
         restore_stdin(fdinold);
@@ -143,13 +143,13 @@ fn exec_builtin(state: &State, builtin: &Builtin, cmd: &Command) -> io::Result<i
     Ok(status)
 }
 
-fn run_builtin(builtin: &Builtin, state: &State, cmd: &Command) -> io::Result<i32> {
+fn run_builtin(builtin: &Builtin, state: &State, cmd: &Command) -> io::Result<Status> {
     info!("Running builtin");
     if cmd.background {
         state.lastpid.set(fork_child(&mut || {
             exec_builtin(state, builtin, cmd).unwrap();
         })?);
-        Ok(0)
+        Ok(Status::success())
     } else {
         exec_builtin(state, builtin, cmd)
     }
@@ -162,9 +162,9 @@ pub fn eval(state: &State, cmdstr: &str) {
             None => run_external(&cmd),
         };
         match res {
-            Ok(status) => state.set_status(status),
+            Ok(status) => state.set_status(&status),
             Err(err) => {
-                state.set_status(nix::errno::errno());
+                state.set_status_code(nix::errno::errno());
                 report_error(&err);
             }
         }
@@ -179,7 +179,7 @@ pub fn read_eval(state: &State) {
         Ok(0) => state.terminate(),
         Ok(_) => eval(state, &line),
         Err(err) => {
-            state.set_status(nix::errno::errno());
+            state.set_status_code(nix::errno::errno());
             report_error(&err);
         }
     }

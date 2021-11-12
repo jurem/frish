@@ -15,7 +15,6 @@ fn main() {
     // init
     env_logger::init();
     info!("Initializing shell");
-    error!("qwe");
     let builtins = builtins::default_builtins();
     let interactive = unsafe { libc::isatty(libc::STDIN_FILENO) > 0 };
     let state = State::new(builtins, "frish", interactive);
@@ -23,5 +22,5 @@ fn main() {
     read_eval_loop(&state);
     // done
     info!("Finalizing shell");
-    exit(state.status.get());
+    exit(state.status_code());
 }
