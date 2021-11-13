@@ -1,9 +1,10 @@
 use std::process::exit;
 
-pub mod builtins;
+mod builtins;
 pub mod common;
 pub mod exec;
 pub mod parser;
+mod shell;
 
 use crate::common::State;
 use crate::exec::read_eval_loop;
