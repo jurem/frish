@@ -1,5 +1,6 @@
 use nix::unistd;
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::fmt;
 use std::io;
 
@@ -34,8 +35,8 @@ impl fmt::Display for Status {
 }
 
 #[derive(Debug, Clone)]
-pub struct State {
-    pub builtins: Vec<Builtin>,
+pub struct State<'a> {
+    pub builtins: HashMap<&'a str, Builtin<'a>>,
     pub name: RefCell<String>,
     pub depth: u32,
     pub debug: Cell<bool>,
@@ -45,8 +46,12 @@ pub struct State {
     pub lastpid: Cell<unistd::Pid>,
 }
 
-impl State {
-    pub fn new(builtins: Vec<Builtin>, name: &str, interactive: bool) -> State {
+impl<'a> State<'a> {
+    pub fn new(
+        builtins: HashMap<&'a str, Builtin<'a>>,
+        name: &str,
+        interactive: bool,
+    ) -> State<'a> {
         State {
             builtins,
             name: RefCell::new(String::from(name)),
@@ -89,7 +94,7 @@ impl State {
     }
 
     pub fn find_builtin(&self, name: &str) -> Option<&Builtin> {
-        self.builtins.iter().find(|&b| b.command == name)
+        self.builtins.get(name)
     }
 }
 

@@ -4,8 +4,8 @@ use std::str::FromStr;
 use crate::common::{State, Status};
 
 pub fn do_help(state: &State, _args: &[&str]) -> io::Result<Status> {
-    for b in &state.builtins {
-        println!("{:16}{}", b.command, b.help);
+    for (_, b) in &state.builtins {
+        println!("{:16}{}", b.command, b.hint);
     }
     Ok(Status::success())
 }
