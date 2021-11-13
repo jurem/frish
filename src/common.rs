@@ -29,7 +29,7 @@ impl Status {
 
 impl fmt::Display for Status {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+        self.0.fmt(f) // instead of write!(f, "{}", self.0)
     }
 }
 

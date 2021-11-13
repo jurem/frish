@@ -18,7 +18,7 @@ use log::{debug, info};
 fn print_prompt(state: &State) {
     if state.interactive {
         print!("{}> ", state.name.borrow());
-        std::io::stdout().flush().expect("Cannot flush stdout");
+        io::stdout().flush().expect("Cannot flush stdout");
     }
 }
 
