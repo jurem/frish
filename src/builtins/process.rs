@@ -2,6 +2,8 @@ use nix::unistd;
 use std::io;
 
 use crate::common::{State, Status};
+use crate::shell::exec::wait_process;
+use crate::shell::pipes::{pipes_begin, pipes_cont, pipes_end};
 use crate::shell::{eval, read_eval_loop};
 
 pub fn do_status(state: &State, _args: &[&str]) -> io::Result<Status> {
@@ -42,4 +44,15 @@ pub fn do_subshell(state: &State, args: &[&str]) -> io::Result<Status> {
         read_eval_loop(&state);
     }
     Ok(Status::from(&state.status.get()))
+}
+
+pub fn do_pipes(state: &State, args: &[&str]) -> io::Result<Status> {
+    let mut fds2 = pipes_begin(state, args[1])?;
+    for i in 2..args.len() - 1 {
+        let fds1 = fds2;
+        fds2 = pipes_cont(state, args[i], fds1)?;
+    }
+    let pid = pipes_end(state, args[args.len() - 1], fds2)?;
+    wait_process(pid)?;
+    Ok(Status::success())
 }

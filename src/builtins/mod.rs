@@ -88,6 +88,7 @@ pub fn default_builtins<'a>() -> Vec<Builtin<'a>> {
             process::do_subshell,
             "Run a subshell with a command",
         ),
+        Builtin::new("pipes", process::do_pipes, "Create a pipeline"),
     ]
 }
 

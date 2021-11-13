@@ -5,7 +5,8 @@ use crate::common::State;
 use crate::parser;
 
 pub mod exec;
-mod redirect;
+pub mod pipes;
+pub mod redirect;
 
 pub fn eval(state: &State, cmdstr: &str) {
     if let Some(cmd) = parser::parse(&cmdstr) {

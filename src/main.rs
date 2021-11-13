@@ -3,7 +3,7 @@ use std::process::exit;
 mod builtins;
 mod common;
 mod parser;
-mod shell;
+pub mod shell;
 
 use crate::common::State;
 use crate::shell::read_eval_loop;
