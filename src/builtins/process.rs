@@ -2,7 +2,7 @@ use nix::unistd;
 use std::io;
 
 use crate::common::{State, Status};
-use crate::exec::{eval, read_eval_loop};
+use crate::shell::{eval, read_eval_loop};
 
 pub fn do_status(state: &State, _args: &[&str]) -> io::Result<Status> {
     println!("{}", state.status.get());

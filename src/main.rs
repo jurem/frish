@@ -1,13 +1,12 @@
 use std::process::exit;
 
 mod builtins;
-pub mod common;
-pub mod exec;
-pub mod parser;
+mod common;
+mod parser;
 mod shell;
 
 use crate::common::State;
-use crate::exec::read_eval_loop;
+use crate::shell::read_eval_loop;
 
 #[macro_use]
 extern crate log;
