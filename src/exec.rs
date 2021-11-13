@@ -1,12 +1,12 @@
-use nix::fcntl::{open, OFlag};
-use nix::sys::stat::Mode;
-use nix::sys::wait::{waitpid, WaitStatus};
-use nix::unistd::{close, dup, dup2, execvp, fork, ForkResult, Pid};
-use nix::NixPath;
-use std::os::unix::io::RawFd;
-
-use std::io;
-use std::io::Write;
+use nix::{
+    fcntl::{open, OFlag},
+    sys::{
+        stat::Mode,
+        wait::{waitpid, WaitStatus},
+    },
+    unistd::{close, dup, dup2, execvp, fork, ForkResult, Pid},
+};
+use std::{convert::Infallible, io, io::Write, os::unix::io::RawFd};
 
 use crate::builtins::Builtin;
 use crate::common::report_error;
@@ -94,39 +94,34 @@ fn fork_child<F: FnMut()>(child: &mut F) -> io::Result<Pid> {
     }
 }
 
-fn exec_external(prog: &str, args: &[&str]) -> Result<std::convert::Infallible, nix::errno::Errno> {
-    let args = args
-        .into_iter()
-        .map(|&arg| std::ffi::CString::new(arg))
-        .collect::<Result<Vec<_>, _>>()
-        .unwrap();
-    // let args = args. into_iter().map(|arg| arg.as_ptr()).collect();
-    prog.with_nix_path(|cprog| execvp(cprog, args.as_ref()))?
+fn exec_external(cmd: &Command) -> Result<Infallible, io::Error> {
+    redirect_stdin(cmd.inredirect)
+        .and_then(|_| redirect_stdout(cmd.outredirect))
+        .and_then(|_| {
+            let args = &cmd.args;
+            let args = args
+                .into_iter()
+                .map(|&arg| std::ffi::CString::new(arg))
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap();
+            let cprog = &args[0];
+            execvp(cprog, &args).unwrap();
+            //cmd.args[0].with_nix_path(|cprog| execvp(cprog, args.as_ref().unwrap()))
+            Err(std::io::Error::last_os_error())
+        })
 }
 
 fn run_external(cmd: &Command) -> io::Result<Status> {
     debug!("Running external command");
     if cmd.background {
         fork_child(&mut || {
-            redirect_stdin(cmd.inredirect)
-                .and_then(|_| redirect_stdout(cmd.outredirect))
-                .and_then::<std::convert::Infallible, _>(|_| {
-                    exec_external(cmd.args[0], &cmd.args)?;
-                    Err(std::io::Error::last_os_error())
-                })
-                .unwrap();
+            exec_external(cmd).unwrap();
         })
         .unwrap();
         Ok(Status::success())
     } else {
         fork_child_wait(&mut || {
-            redirect_stdin(cmd.inredirect)
-                .and_then(|_| redirect_stdout(cmd.outredirect))
-                .and_then::<std::convert::Infallible, _>(|_| {
-                    exec_external(cmd.args[0], &cmd.args)?;
-                    Err(std::io::Error::last_os_error())
-                })
-                .unwrap();
+            exec_external(cmd).unwrap();
         })
     }
 }

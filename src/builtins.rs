@@ -1,12 +1,10 @@
-use nix::fcntl;
-use nix::sys::stat;
-use nix::unistd;
-use nix::NixPath;
+use nix::{fcntl, sys::stat, unistd, NixPath};
+
+use std::fmt;
+use std::io;
 
 // TODO: eliminate these crates by using only nix::*
-use std::fmt;
 use std::fs; // portable FS functions
-use std::io;
 
 use crate::common::{report_nixerror, State, Status};
 use crate::exec::{eval, read_eval_loop};
@@ -249,8 +247,6 @@ pub fn do_rename(_: &State, args: &[&str]) -> io::Result<Status> {
 //         }
 //     };
 // }
-
-use std::io::Read;
 
 pub fn do_cpcat(_: &State, args: &[&str]) -> io::Result<Status> {
     if args.len() < 3 {

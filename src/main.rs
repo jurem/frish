@@ -22,5 +22,5 @@ fn main() {
     read_eval_loop(&state);
     // done
     info!("Finalizing shell");
-    exit(state.status_code());
+    exit(state.status.get().code());
 }

@@ -10,16 +10,20 @@ use crate::builtins::Builtin;
 pub struct Status(i32);
 
 impl Status {
-    pub fn from(status: &Status) -> Status {
-        Status(status.0)
-    }
-
     pub fn from_code(code: i32) -> Status {
         Status(code)
     }
 
+    pub fn from(status: &Status) -> Status {
+        Status::from_code(status.0)
+    }
+
     pub fn success() -> Status {
         Status::from_code(0)
+    }
+
+    pub fn code(&self) -> i32 {
+        self.0
     }
 }
 
@@ -70,10 +74,6 @@ impl State {
 
     pub fn terminate(&self) {
         self.running.set(false);
-    }
-
-    pub fn status_code(&self) -> i32 {
-        self.status.get().0
     }
 
     pub fn set_status_code(&self, code: i32) {
