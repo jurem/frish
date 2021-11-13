@@ -1,4 +1,5 @@
-use std::io;
+use std::io; // Result
+use std::str::FromStr;
 
 use crate::common::{State, Status};
 
@@ -18,11 +19,13 @@ pub fn do_name(state: &State, args: &[&str]) -> io::Result<Status> {
     Ok(Status::success())
 }
 
-pub fn do_debug(state: &State, args: &[&str]) -> io::Result<Status> {
+pub fn do_loglevel(_: &State, args: &[&str]) -> io::Result<Status> {
     if args.len() > 1 {
-        state.debug.set(args[1] == "on");
+        if let Ok(level) = log::LevelFilter::from_str(args[1]) {
+            log::set_max_level(level);
+        }
     }
-    println!("Debug is {}", if state.debug.get() { "on" } else { "off" });
+    println!("Log level is {}", log::max_level());
     Ok(Status::success())
 }
 

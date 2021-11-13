@@ -42,7 +42,11 @@ pub fn default_builtins() -> Vec<Builtin> {
     vec![
         Builtin::new(base::do_help, "help", "Print short help"),
         Builtin::new(base::do_name, "name", "Print or change shell name"),
-        Builtin::new(base::do_debug, "debug", "Print or change debug mode"),
+        Builtin::new(
+            base::do_loglevel,
+            "loglevel",
+            "Print or change logging level",
+        ),
         Builtin::new(
             process::do_status,
             "status",
