@@ -15,9 +15,8 @@ extern crate log;
 fn main() {
     env_logger::init();
     info!("Initializing shell");
-    let builtins = builtins::default_hm();
     let interactive = unsafe { libc::isatty(libc::STDIN_FILENO) > 0 };
-    let state = State::new(builtins, "frish", interactive);
+    let state = State::new("frish", interactive);
     // run
     read_eval_loop(&state);
     // done

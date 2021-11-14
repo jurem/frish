@@ -4,7 +4,7 @@ use std::str::FromStr;
 use crate::state::{State, Status};
 
 pub fn do_help(state: &State, _args: &[&str]) -> io::Result<Status> {
-    for (_, b) in &state.builtins {
+    for b in &state.builtins.items {
         println!("{:16}{}", b.command, b.hint);
     }
     Ok(Status::success())

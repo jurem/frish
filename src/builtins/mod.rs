@@ -13,17 +13,17 @@ type BuiltinHandler = fn(&State, &[&str]) -> io::Result<Status>;
 
 #[derive(Clone)]
 pub struct Builtin<'a> {
-    pub command: &'a str, //String,
+    pub command: &'a str,
     pub handler: BuiltinHandler,
-    pub hint: String,
+    pub hint: &'a str,
 }
 
 impl<'a> Builtin<'a> {
-    pub fn new(command: &'a str, handler: BuiltinHandler, hint: &str) -> Builtin<'a> {
+    pub fn new(command: &'a str, handler: BuiltinHandler, hint: &'a str) -> Self {
         Builtin {
-            command, //: String::from(command),
+            command,
             handler,
-            hint: String::from(hint),
+            hint,
         }
     }
 }
@@ -34,6 +34,27 @@ impl<'a> fmt::Debug for Builtin<'a> {
             .field("cmd", &self.command)
             .field("hint", &self.hint)
             .finish()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Builtins<'a> {
+    items: Vec<Builtin<'a>>,
+    map: HashMap<&'a str, usize>,
+}
+
+impl<'a> Builtins<'a> {
+    pub fn new() -> Self {
+        let mut map = HashMap::new();
+        let items = default_builtins();
+        for (i, b) in items.iter().enumerate() {
+            map.insert(b.command, i);
+        }
+        Builtins { items, map }
+    }
+
+    pub fn find(&self, name: &str) -> Option<&Builtin> {
+        self.map.get(name).map(|idx| &self.items[*idx])
     }
 }
 
@@ -90,12 +111,4 @@ pub fn default_builtins<'a>() -> Vec<Builtin<'a>> {
         ),
         Builtin::new("pipes", process::do_pipes, "Create a pipeline"),
     ]
-}
-
-pub fn default_hm<'a>() -> HashMap<&'a str, Builtin<'a>> {
-    let mut map = HashMap::new();
-    for b in default_builtins() {
-        map.insert(b.command, b);
-    }
-    map
 }

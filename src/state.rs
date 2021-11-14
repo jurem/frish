@@ -1,9 +1,8 @@
 use nix::unistd;
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
 use std::fmt;
 
-use crate::builtins::Builtin;
+use crate::builtins::Builtins;
 
 // I guess I could use std::process::ExitStatus, but let's play
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -35,7 +34,7 @@ impl fmt::Display for Status {
 
 #[derive(Debug, Clone)]
 pub struct State<'a> {
-    pub builtins: HashMap<&'a str, Builtin<'a>>,
+    pub builtins: Builtins<'a>,
     pub name: RefCell<String>,
     pub depth: u32,
     pub debug: Cell<bool>,
@@ -46,13 +45,9 @@ pub struct State<'a> {
 }
 
 impl<'a> State<'a> {
-    pub fn new(
-        builtins: HashMap<&'a str, Builtin<'a>>,
-        name: &str,
-        interactive: bool,
-    ) -> State<'a> {
+    pub fn new(name: &str, interactive: bool) -> State {
         State {
-            builtins,
+            builtins: Builtins::new(),
             name: RefCell::new(String::from(name)),
             depth: 0,
             debug: Cell::new(false),
@@ -90,9 +85,5 @@ impl<'a> State<'a> {
 
     pub fn set_name(&self, name: &str) {
         *self.name.borrow_mut() = String::from(name);
-    }
-
-    pub fn find_builtin(&self, name: &str) -> Option<&Builtin> {
-        self.builtins.get(name)
     }
 }

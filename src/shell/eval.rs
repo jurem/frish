@@ -7,7 +7,7 @@ use crate::state::State;
 
 pub fn eval(state: &State, cmdstr: &str) {
     if let Some(cmd) = parser::parse(&cmdstr) {
-        let res = match state.find_builtin(cmd.args[0]) {
+        let res = match state.builtins.find(cmd.args[0]) {
             Some(builtin) => exec::run_builtin(builtin, state, &cmd),
             None => exec::run_external(&cmd),
         };
