@@ -1,10 +1,12 @@
 use nix::unistd;
 use std::io;
 
-use crate::common::{State, Status};
-use crate::shell::exec::wait_process;
-use crate::shell::pipes::{pipes_begin, pipes_cont, pipes_end};
-use crate::shell::{eval, read_eval_loop};
+use crate::shell::{
+    eval::{eval, read_eval_loop},
+    exec::wait_process,
+    pipes::{pipes_begin, pipes_cont, pipes_end},
+};
+use crate::state::{State, Status};
 
 pub fn do_status(state: &State, _args: &[&str]) -> io::Result<Status> {
     println!("{}", state.status.get());

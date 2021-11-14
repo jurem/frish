@@ -1,9 +1,9 @@
-use nix::unistd::{close, dup, dup2, pipe, Pid};
+use nix::unistd::{close, dup2, pipe, Pid};
 use std::{io, os::unix::io::RawFd};
 
-use crate::common::State;
-use crate::shell::eval;
+use crate::shell::eval::eval;
 use crate::shell::exec::fork_child;
+use crate::state::State;
 
 pub fn pipes_begin(state: &State, cmdstr: &str) -> io::Result<(RawFd, RawFd)> {
     let fds = pipe()?;

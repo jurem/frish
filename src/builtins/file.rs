@@ -2,16 +2,12 @@ use nix::{fcntl, unistd};
 use std::fs;
 use std::io; // portable FS functions, TODO: use only nix::*
 
-use crate::common::{report_nixerror, State, Status};
+use crate::common::report_nixerror;
+use crate::state::{State, Status};
 
 pub fn do_link_hard(_: &State, args: &[&str]) -> io::Result<Status> {
-    unistd::linkat(
-        None,
-        args[1],
-        None,
-        args[2],
-        unistd::LinkatFlags::NoSymlinkFollow,
-    )?;
+    let flag = unistd::LinkatFlags::NoSymlinkFollow;
+    unistd::linkat(None, args[1], None, args[2], flag)?;
     Ok(Status::success())
 }
 

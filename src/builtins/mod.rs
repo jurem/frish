@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::io;
 
-use crate::common::{State, Status};
+use crate::state::{State, Status};
 
 mod base;
 mod dir;

@@ -1,7 +1,7 @@
 use std::io; // Result
 use std::str::FromStr;
 
-use crate::common::{State, Status};
+use crate::state::{State, Status};
 
 pub fn do_help(state: &State, _args: &[&str]) -> io::Result<Status> {
     for (_, b) in &state.builtins {

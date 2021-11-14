@@ -1,7 +1,9 @@
-use crate::common::{report_nixerror, State, Status};
 use nix::{sys::stat, unistd, NixPath};
 use std::fs; // portable FS functions, TODO: use only nix::*
 use std::io;
+
+use crate::common::report_nixerror;
+use crate::state::{State, Status};
 
 pub fn do_dir_change(_: &State, args: &[&str]) -> io::Result<Status> {
     let path = if args.len() == 1 { "/" } else { args[1] };

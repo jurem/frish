@@ -7,8 +7,9 @@ use std::{convert::Infallible, io, io::Write};
 
 use crate::builtins::Builtin;
 use crate::common::report_error;
-use crate::common::{Command, State, Status};
+use crate::common::Command;
 use crate::shell::redirect::{redirect_stdin, redirect_stdout, restore_stdin, restore_stdout};
+use crate::state::{State, Status};
 
 pub fn print_prompt(state: &State) {
     if state.interactive {

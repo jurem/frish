@@ -81,7 +81,7 @@ pub fn parse(line: &str) -> Option<Command> {
         };
         // return
         Some(Command {
-            args: tokens[0..last + 1].to_vec(),
+            args: tokens[..last + 1].to_vec(),
             background: back,
             inredirect: inr,
             outredirect: out,

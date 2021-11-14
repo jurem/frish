@@ -3,16 +3,16 @@ use std::process::exit;
 mod builtins;
 mod common;
 mod parser;
-pub mod shell;
+mod shell;
+mod state;
 
-use crate::common::State;
-use crate::shell::read_eval_loop;
+use crate::shell::eval::read_eval_loop;
+use crate::state::State;
 
 #[macro_use]
 extern crate log;
 
 fn main() {
-    // init
     env_logger::init();
     info!("Initializing shell");
     let builtins = builtins::default_hm();
