@@ -40,75 +40,64 @@ impl<'a> fmt::Debug for Builtin<'a> {
 #[derive(Debug, Clone)]
 pub struct Builtins<'a> {
     items: Vec<Builtin<'a>>,
-    map: HashMap<&'a str, usize>,
+    hash: HashMap<&'a str, usize>,
 }
 
 impl<'a> Builtins<'a> {
     pub fn new() -> Self {
-        let mut map = HashMap::new();
+        let mut hash = HashMap::new();
         let items = default_builtins();
         for (i, b) in items.iter().enumerate() {
-            map.insert(b.command, i);
+            hash.insert(b.command, i);
         }
-        Builtins { items, map }
+        Builtins { items, hash }
     }
 
     pub fn find(&self, name: &str) -> Option<&Builtin> {
-        self.map.get(name).map(|idx| &self.items[*idx])
+        self.hash.get(name).map(|&idx| &self.items[idx])
     }
 }
 
 // ********** default builtins **********
 
-pub fn default_builtins<'a>() -> Vec<Builtin<'a>> {
+#[inline]
+fn builtin<'a>(name: &'a str, handler: BuiltinHandler, hint: &'a str) -> Builtin<'a> {
+    Builtin::new(name, handler, hint)
+}
+
+fn default_builtins<'a>() -> Vec<Builtin<'a>> {
+    use base::*;
+    use dir::*;
+    use file::*;
+    use process::*;
     vec![
-        Builtin::new("help", base::do_help, "Print short help"),
-        Builtin::new("name", base::do_name, "Print or change shell name"),
-        Builtin::new(
-            "loglevel",
-            base::do_loglevel,
-            "Print or change logging level",
-        ),
-        Builtin::new(
-            "status",
-            process::do_status,
-            "Print status of the last command",
-        ),
-        Builtin::new("print", base::do_print, "Print arguments"),
-        Builtin::new("echo", base::do_echo, "Print arguments and the newline"),
-        Builtin::new("pid", process::do_pid, "Print PID"),
-        Builtin::new("ppid", process::do_ppid, "Print PPID"),
-        Builtin::new("exit", process::do_exit, "Exit from the current shell"),
-        Builtin::new("dir.change", dir::do_dir_change, "Change current directory"),
-        Builtin::new(
-            "dir.where",
-            dir::do_dir_where,
-            "Print current working directory",
-        ),
-        Builtin::new("dir.make", dir::do_dir_make, "Make directories"),
-        Builtin::new("dir.remove", dir::do_dir_remove, "Remove directories"),
-        Builtin::new("dir.list", dir::do_dir_list, "List directory"),
-        Builtin::new("dir.inspect", dir::do_dir_inspect, "Inspect directory"),
-        Builtin::new("link.hard", file::do_link_hard, "Create hard link"),
-        Builtin::new("link.soft", file::do_link_soft, "Create symbolic/soft link"),
-        Builtin::new(
-            "link.read",
-            file::do_link_read,
-            "Print symbolic link target",
-        ),
-        Builtin::new("unlink", file::do_unlink, "Unlink files"),
-        Builtin::new("rename", file::do_rename, "Rename file"),
-        Builtin::new("cpcat", file::do_cpcat, "Copy file"),
-        Builtin::new(
-            "depth",
-            process::do_depth,
-            "Print the depth of the current subshell",
-        ),
-        Builtin::new(
-            "subshell",
-            process::do_subshell,
-            "Run a subshell with a command",
-        ),
-        Builtin::new("pipes", process::do_pipes, "Create a pipeline"),
+        // base
+        builtin("help", do_help, "Print short help for all builtin commands"),
+        builtin("name", do_name, "Print or change the shell name"),
+        builtin("loglevel", do_loglevel, "Print or change logging level"),
+        builtin("print", do_print, "Print its arguments"),
+        builtin("echo", do_echo, "Print its arguments and the newline"),
+        // dir
+        builtin("dir.change", do_dir_change, "Change the current directory"),
+        builtin("dir.where", do_dir_where, "Print current working directory"),
+        builtin("dir.make", do_dir_make, "Make directories"),
+        builtin("dir.remove", do_dir_remove, "Remove directories"),
+        builtin("dir.list", do_dir_list, "List directory"),
+        builtin("dir.inspect", do_dir_inspect, "Inspect directory"),
+        // file
+        builtin("link.hard", do_link_hard, "Create hard link"),
+        builtin("link.soft", do_link_soft, "Create symbolic/soft link"),
+        builtin("link.read", do_link_read, "Print symbolic link target"),
+        builtin("unlink", do_unlink, "Unlink files"),
+        builtin("rename", do_rename, "Rename file"),
+        builtin("cpcat", do_cpcat, "Copy file"),
+        // process
+        builtin("pid", do_pid, "Print PID of the current shell"),
+        builtin("ppid", do_ppid, "Print PPID of the current shell"),
+        builtin("status", do_status, "Print status of the last command"),
+        builtin("exit", do_exit, "Exit from the current shell"),
+        builtin("depth", do_depth, "Print the depth of the current subshell"),
+        builtin("subshell", do_subshell, "Run a subshell with a command"),
+        builtin("pipes", do_pipes, "Create a pipeline"),
     ]
 }
