@@ -63,15 +63,17 @@ fn exec_external(cmd: &Command) -> Result<Infallible, io::Error> {
         })
 }
 
-pub fn run_external(cmd: &Command) -> io::Result<Status> {
+pub fn run_external(state: &State, cmd: &Command) -> io::Result<Status> {
     debug!("Running external command: '{}'", cmd.args[0]);
     if cmd.background {
-        fork_child(&mut || {
-            if let Err(err) = exec_external(cmd) {
-                report_error(&err);
-            }
-        })
-        .unwrap();
+        state.lastpid.set(
+            fork_child(&mut || {
+                if let Err(err) = exec_external(cmd) {
+                    report_error(&err);
+                }
+            })
+            .unwrap(),
+        );
         Ok(Status::success())
     } else {
         fork_child_wait(&mut || {

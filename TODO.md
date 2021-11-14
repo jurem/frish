@@ -7,3 +7,4 @@
 * do_cpcat: use only nix, no high-level fun
 * aliases
 * variables
+* Check the logger: RUST_LOG=Debug seems to work with loglevel command. If RUST_LOG=Error then loglevel setting is ignored.

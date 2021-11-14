@@ -8,18 +8,23 @@ use crate::shell::{
 };
 use crate::state::{State, Status};
 
-pub fn do_status(state: &State, _args: &[&str]) -> io::Result<Status> {
+pub fn do_status(state: &State, _: &[&str]) -> io::Result<Status> {
     println!("{}", state.status.get());
     Ok(Status::success())
 }
 
-pub fn do_pid(_: &State, _args: &[&str]) -> io::Result<Status> {
+pub fn do_pid(_: &State, _: &[&str]) -> io::Result<Status> {
     println!("{}", unistd::getpid());
     Ok(Status::success())
 }
 
-pub fn do_ppid(_: &State, _args: &[&str]) -> io::Result<Status> {
+pub fn do_ppid(_: &State, _: &[&str]) -> io::Result<Status> {
     println!("{}", unistd::getppid());
+    Ok(Status::success())
+}
+
+pub fn do_lastpid(state: &State, _: &[&str]) -> io::Result<Status> {
+    println!("{}", state.lastpid.get());
     Ok(Status::success())
 }
 

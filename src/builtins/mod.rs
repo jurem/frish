@@ -94,6 +94,11 @@ fn default_builtins<'a>() -> Vec<Builtin<'a>> {
         // process
         builtin("pid", do_pid, "Print PID of the current shell"),
         builtin("ppid", do_ppid, "Print PPID of the current shell"),
+        builtin(
+            "lastpid",
+            do_lastpid,
+            "Print PID of the last background command",
+        ),
         builtin("status", do_status, "Print status of the last command"),
         builtin("exit", do_exit, "Exit from the current shell"),
         builtin("depth", do_depth, "Print the depth of the current subshell"),

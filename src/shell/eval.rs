@@ -9,7 +9,7 @@ pub fn eval(state: &State, cmdstr: &str) {
     if let Some(cmd) = parser::parse(&cmdstr) {
         let res = match state.builtins.find(cmd.args[0]) {
             Some(builtin) => exec::run_builtin(builtin, state, &cmd),
-            None => exec::run_external(&cmd),
+            None => exec::run_external(state, &cmd),
         };
         match res {
             Ok(status) => state.set_status(&status),
